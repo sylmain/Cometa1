@@ -332,6 +332,50 @@ def get_mi_deps():
 
     return {'mi_deps_dict': mi_deps_dict, 'dep_mis_dict': dep_mis_dict, 'reserve': 'reserve'}
 
+def get_mietas():
+    mietas_dict = dict()
+    sql_select = "SELECT * FROM mietas"
+    MySQLConnection.verify_connection()
+    connection = MySQLConnection.create_connection()
+    result = MySQLConnection.execute_read_query(connection, sql_select)
+    connection.close()
+    for mieta in result:
+        mietas_dict[str(mieta[0])] = {'reg_card_number': mi[1],
+                                'measure_code': str(mi[2]),
+                                'status': mi[3],
+                                'reestr': mi[4],
+                                'title': mi[5],
+                                'type': mi[6],
+                                'modification': mi[7],
+                                'number': mi[8],
+                                'inv_number': mi[9],
+                                'manufacturer': mi[10],
+                                'manuf_year': mi[11],
+                                'expl_year': mi[12],
+                                'diapazon': mi[13],
+                                'PG': mi[14],
+                                'KT': mi[15],
+                                'other_characteristics': mi[16],
+                                'MPI': mi[17],
+                                'purpose': mi[18],
+                                'responsible_person': str(mi[19]),
+                                'personal': mi[20],
+                                'room': str(mi[21]),
+                                'software_inner': mi[22],
+                                'software_outer': mi[23],
+                                'RE': str(mi[24]),
+                                'pasport': str(mi[25]),
+                                'MP': str(mi[26]),
+                                'TO_period': mi[27],
+                                'owner': mi[28],
+                                'owner_contract': mi[29]}
+    # `mi_id`, `mis_reg_card_number`, `mi_measure_code`, `mi_status`, `mi_reestr`, `mi_title`,
+    #         `mi_modification`, `mi_number`, `mi_inv_number`, `mi_manufacturer`, `mi_manuf_year`, `mi_expl_year`,
+    #         `mi_diapazon`, `mi_PG`, `mi_KT`, `mi_other_characteristics`, `mi_MPI`, `mi_purpose`,
+    #         `mi_responsible_person`, `mi_personal`, `mi_room`, `mi_software_inner`, `mi_software_outer`, `mi_RE`,
+    #         `mi_pasport`, `mi_MP`, `mi_TO_period`)
+
+    return {'mis_dict': mis_dict, 'reserve': 'reserve'}
 
 def get_organization_name():
     MySQLConnection.verify_connection()

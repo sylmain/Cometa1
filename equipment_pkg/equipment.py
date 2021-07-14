@@ -921,11 +921,12 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
         # ---------------------------------ОЧИСТКА ИНФОРМАЦИИ ОБ ЭТАЛОНАХ---------------------------------------------
         self.ui.lineEdit_mieta_number.setText("")
+        self.ui.comboBox_mieta_rank.setCurrentIndex(0)
         self.ui.lineEdit_mieta_rank_title.setText("")
         self.ui.lineEdit_mieta_npenumber.setText("")
         self.ui.lineEdit_mieta_schematype.setText("")
         self.ui.plainTextEdit_mieta_schematitle.setPlainText("")
-        self.ui.comboBox_mieta_rank.setCurrentIndex(0)
+
 
     def _update_equip_table(self):
         self.tbl_equip_model.clear()
@@ -1024,37 +1025,53 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             connection.close()
             return
 
-        sql_replace = f"REPLACE INTO mis_vri_info VALUES (" \
+        mieta_id = self.ui.lineEdit_mieta_id.text()
+        if not mieta_id:
+            mieta_id = "NULL"
+
+        sql_replace = f"REPLACE INTO mietas VALUES (" \
+                      f"{mieta_id}, " \
                       f"{mi_id}, " \
-                      f"'{self.ui.lineEdit_reg_card_number.text()}', " \
-                      f"{int(measure_code_id)}, " \
-                      f"'{self.ui.comboBox_status.currentText()}', " \
-                      f"'{self.ui.lineEdit_reestr.text()}', " \
-                      f"'{self.ui.plainTextEdit_title.toPlainText()}', " \
-                      f"'{self.ui.plainTextEdit_type.toPlainText()}', " \
-                      f"'{self.ui.lineEdit_modification.text()}', " \
-                      f"'{self.ui.lineEdit_number.text()}', " \
-                      f"'{self.ui.lineEdit_inv_number.text()}', " \
-                      f"'{self.ui.plainTextEdit_manufacturer.toPlainText()}', " \
-                      f"'{self.ui.lineEdit_manuf_year.text()}', " \
-                      f"'{self.ui.lineEdit_expl_year.text()}', " \
-                      f"'{self.ui.lineEdit_diapazon.text()}', " \
-                      f"'{self.ui.lineEdit_PG.text()}', " \
-                      f"'{self.ui.lineEdit_KT.text()}', " \
-                      f"'{self.ui.plainTextEdit_other_characteristics.toPlainText()}', " \
-                      f"'{self.ui.lineEdit_MPI.text()}', " \
-                      f"'{self.ui.plainTextEdit_purpose.toPlainText()}', " \
-                      f"{int(resp_person_id)}, " \
-                      f"'{self.ui.plainTextEdit_personal.toPlainText()}', " \
-                      f"{int(room_id)}, " \
-                      f"'{self.ui.plainTextEdit_software_inner.toPlainText()}', " \
-                      f"'{self.ui.plainTextEdit_software_outer.toPlainText()}', " \
-                      f"{int(self.ui.checkBox_has_manual.checkState())}, " \
-                      f"{int(self.ui.checkBox_has_pasport.checkState())}, " \
-                      f"{int(self.ui.checkBox_has_verif_method.checkState())}, " \
-                      f"'{self.ui.lineEdit_period_TO.text()}', " \
-                      f"'{self.ui.plainTextEdit_owner.toPlainText()}', " \
-                      f"'{self.ui.plainTextEdit_owner_contract.toPlainText()}');"
+                      f"'{self.ui.lineEdit_mieta_number.text()}', " \
+                      f"'{self.ui.comboBox_mieta_rank.currentText()}', " \
+                      f"'{self.ui.lineEdit_mieta_npenumber.text()}', " \
+                      f"'{self.ui.lineEdit_mieta_schematype.text()}', " \
+                      f"'{self.ui.plainTextEdit_mieta_schematitle.toPlainText()}', " \
+                      f"'{self.ui.lineEdit_mieta_rank_title.text()}');"
+
+        sql_replace_1 = f"REPLACE INTO mis_vri_info VALUES (" \
+                        f"{mi_id}, " \
+                        f"'{self.ui.lineEdit_reg_card_number.text()}', " \
+                        f"{int(measure_code_id)}, " \
+                        f"'{self.ui.comboBox_status.currentText()}', " \
+                        f"'{self.ui.lineEdit_reestr.text()}', " \
+                        f"'{self.ui.plainTextEdit_title.toPlainText()}', " \
+                        f"'{self.ui.plainTextEdit_type.toPlainText()}', " \
+                        f"'{self.ui.lineEdit_modification.text()}', " \
+                        f"'{self.ui.lineEdit_number.text()}', " \
+                        f"'{self.ui.lineEdit_inv_number.text()}', " \
+                        f"'{self.ui.plainTextEdit_manufacturer.toPlainText()}', " \
+                        f"'{self.ui.lineEdit_manuf_year.text()}', " \
+                        f"'{self.ui.lineEdit_expl_year.text()}', " \
+                        f"'{self.ui.lineEdit_diapazon.text()}', " \
+                        f"'{self.ui.lineEdit_PG.text()}', " \
+                        f"'{self.ui.lineEdit_KT.text()}', " \
+                        f"'{self.ui.plainTextEdit_other_characteristics.toPlainText()}', " \
+                        f"'{self.ui.lineEdit_MPI.text()}', " \
+                        f"'{self.ui.plainTextEdit_purpose.toPlainText()}', " \
+                        f"{int(resp_person_id)}, " \
+                        f"'{self.ui.plainTextEdit_personal.toPlainText()}', " \
+                        f"{int(room_id)}, " \
+                        f"'{self.ui.plainTextEdit_software_inner.toPlainText()}', " \
+                        f"'{self.ui.plainTextEdit_software_outer.toPlainText()}', " \
+                        f"{int(self.ui.checkBox_has_manual.checkState())}, " \
+                        f"{int(self.ui.checkBox_has_pasport.checkState())}, " \
+                        f"{int(self.ui.checkBox_has_verif_method.checkState())}, " \
+                        f"'{self.ui.lineEdit_period_TO.text()}', " \
+                        f"'{self.ui.plainTextEdit_owner.toPlainText()}', " \
+                        f"'{self.ui.plainTextEdit_owner_contract.toPlainText()}');"
+
+        MySQLConnection.execute_query(connection, sql_replace)
 
         old_deps = set()
         if mi_id in self.mi_deps['mi_deps_dict']:
