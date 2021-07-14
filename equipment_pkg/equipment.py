@@ -926,9 +926,6 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.lineEdit_mieta_schematype.setText("")
         self.ui.plainTextEdit_mieta_schematitle.setPlainText("")
         self.ui.comboBox_mieta_rank.setCurrentIndex(0)
-        
-        print("hello")
-
 
     def _update_equip_table(self):
         self.tbl_equip_model.clear()
