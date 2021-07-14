@@ -854,7 +854,6 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.cb_worker_model.setStringList([])
         self.cb_room_model.setStringList([])
 
-        self.tbl_verif_model.clear()
 
         self.mit_search.clear()
         self.mit.clear()
@@ -868,9 +867,9 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.comboBox_status.setCurrentIndex(0)
         self.ui.comboBox_measure_code.setCurrentIndex(0)
         self.ui.lineEdit_reg_card_number.setText("")
-        self.ui.comboBox_status.setCurrentIndex(0)
         self.ui.lineEdit_reestr.setText("")
         self.ui.lineEdit_MPI.setText("12")
+        self.ui.radioButton_MPI_yes.setChecked(True)
         self.ui.plainTextEdit_title.setPlainText("")
         self.ui.plainTextEdit_type.setPlainText("")
         self.ui.lineEdit_modification.setText("")
@@ -886,13 +885,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.plainTextEdit_software_inner.setPlainText("")
         self.ui.plainTextEdit_software_outer.setPlainText("")
         self.ui.lineEdit_period_TO.setText("")
-        self.ui.lineEdit_mieta_number.setText("")
-        self.ui.lineEdit_mieta_rank_title.setText("")
-        self.ui.lineEdit_mieta_npenumber.setText("")
-        self.ui.lineEdit_mieta_schematype.setText("")
-        self.ui.plainTextEdit_mieta_schematitle.setPlainText("")
-        self.ui.comboBox_mieta_rank.setCurrentIndex(0)
-        self.ui.radioButton_MPI_yes.setChecked(True)
+
         self.ui.plainTextEdit_purpose.setPlainText("")
         self.ui.plainTextEdit_personal.setPlainText("")
         self.ui.plainTextEdit_owner.setPlainText("")
@@ -901,6 +894,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.checkBox_has_verif_method.setChecked(False)
         self.ui.checkBox_has_pasport.setChecked(False)
 
+        # ---------------------------------ОЧИСТКА ИНФОРМАЦИИ О ПОВЕРКАХ------------------------------------------------
+        self.tbl_verif_model.clear()
         self.ui.plainTextEdit_vri_organization.setPlainText("")
         self.ui.plainTextEdit_vri_miOwner.setPlainText("")
         self.ui.lineEdit_vrfDate.setText("")
@@ -923,6 +918,15 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.plainTextEdit_vri_channels.setPlainText("")
         self.ui.plainTextEdit_vri_blocks.setPlainText("")
         self.ui.plainTextEdit_vri_additional_info.setPlainText("")
+
+        # ---------------------------------ОЧИСТКА ИНФОРМАЦИИ ОБ ЭТАЛОНАХ---------------------------------------------
+        self.ui.lineEdit_mieta_number.setText("")
+        self.ui.lineEdit_mieta_rank_title.setText("")
+        self.ui.lineEdit_mieta_npenumber.setText("")
+        self.ui.lineEdit_mieta_schematype.setText("")
+        self.ui.plainTextEdit_mieta_schematitle.setPlainText("")
+        self.ui.comboBox_mieta_rank.setCurrentIndex(0)
+
 
     def _update_equip_table(self):
         self.tbl_equip_model.clear()
