@@ -1,8 +1,8 @@
 import json
 from json.decoder import JSONDecodeError
 
-from PyQt5.QtCore import QRegExp, QThread, pyqtSignal, Qt, QStringListModel
-from PyQt5.QtGui import QStandardItemModel, QStandardItem
+from PyQt5.QtCore import QRegExp, QThread, pyqtSignal, Qt, QStringListModel, QEvent
+from PyQt5.QtGui import QStandardItemModel, QStandardItem, QCloseEvent
 from PyQt5.QtWidgets import QApplication, QMainWindow, QInputDialog, QDialog, QMessageBox, QProgressDialog, \
     QAbstractItemView, QPushButton
 
@@ -32,6 +32,8 @@ class SearchThread(QThread):
             print(resp)
             print("thread stopped")
             self.msg_signal.emit(resp)
+        else:
+            self.msg_signal.emit("stop")
 
 
 class EquipmentWidget(QMainWindow, Ui_MainWindow):
@@ -68,7 +70,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.room_deps = func.get_room_deps()
         self.mi_deps = func.get_mi_deps()
 
-        self.tbl_verif_model = QStandardItemModel(0, 5, parent=self)
+        self.tbl_verif_model = QStandardItemModel(0, 6, parent=self)
         self.tbl_equip_model = QStandardItemModel(0, 5, parent=self)
         self.lv_dep_model = QStringListModel(parent=self)
         self.cb_worker_model = QStringListModel(parent=self)
@@ -202,6 +204,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.cb_worker_model.setStringList(worker_list)
         self.cb_room_model.setStringList(room_list)
 
+    # ----------------------ОБНОВЛЕНИЕ ПОЛЕЙ ИНФОРМАЦИИ ПРИ ПЕРЕКЛЮЧЕНИИ ОБОРУДОВАНИЯ----------------------------------
+
     def _update_info(self, index):
         self._clear_all()
         row = self.tbl_equip_model.itemFromIndex(index).row()
@@ -254,6 +258,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
         self._update_verification_table()
 
+    # --------------------------------ОБНОВЛЕНИЕ ПОЛЕЙ ОТДЕЛА, СОТРУДНИКОВ И КОМНАТ------------------------------------
+
     def _update_owner_info(self):
         self.mi_deps = func.get_mi_deps()
         mi_id = self.ui.lineEdit_equip_id.text()
@@ -283,11 +289,17 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             self.ui.comboBox_room.setCurrentText(
                 func.get_room_number_from_id(self.mis_dict[mi_id]['room'], self.rooms['room_dict']))
 
+    # --------------------------------------ОБРАБОТКА ПОЛУЧЕННОГО ОТВЕТА ОТ СЕРВЕРА------------------------------------
+
     def _on_getting_resp(self, resp):
         if not resp or resp.startswith("Error") or resp.startswith("<!DOCTYPE html>"):
             QMessageBox.critical(self, "Ошибка", f"Возникла ошибка получения сведений из ФГИС \"АРШИН\".\n{resp}")
             self.dialog.close()
             return
+        elif resp == "stop":
+            self.dialog.close()
+            QMessageBox.information(self, "Ошибка", "Поиск прерван")
+            self._clear_all()
         else:
             try:
                 self.resp_json = json.loads(resp)
@@ -309,6 +321,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 else:
                     self.dialog.close()
 
+    # --------------------------------ПРОВЕРКА ВВОДА НОМЕРА ДЛЯ ПОИСКА ОБОРУДОВАНИЯ------------------------------------
+
     def _input_verify(self, dialog):
         if not dialog.textValue():
             dialog.setLabelText("Введите один из номеров:\n"
@@ -321,9 +335,9 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         rx_mit = QRegExp("^[1-9][0-9]{0,5}-[0-9]{2}$")
         rx_npe = QRegExp("^гэт[1-9][0-9]{0,2}-(([0-9]{2})|([0-9]{4}))$")
         rx_uve = QRegExp("^[1-3]\.[0-9]\.\S{3}\.\d{4}\.20[0-4]\d$")
-        rx_mieta = QRegExp("^[1-9]\d{0,5}\.\d{2}\.(0Р|1Р|2Р|3Р|4Р|5Р|РЭ|ВЭ|СИ)\.\d+$")
+        rx_mieta = QRegExp("^[1-9]\d{0,5}\.\d{2}\.(0Р|1Р|2Р|3Р|4Р|5Р|РЭ|ВЭ|СИ)\.\d+\s*$")
         rx_svid = QRegExp("^(С|И)\-\S{1,3}\/[0-3][0-9]\-[0-1][0-9]\-20[2-5][0-9]\/\d{8,10}$")
-        rx_vri_id = QRegExp("^([1-2]\-)*\d{6,10}$")
+        rx_vri_id = QRegExp("^([1-2]\-)*\d{6,10}\s*$")
         rx_mit.setCaseSensitivity(False)
         rx_npe.setCaseSensitivity(False)
         rx_uve.setCaseSensitivity(False)
@@ -417,9 +431,12 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 else:
                     self.mit_search = self.resp_json
                     self._update_progressbar(85, "Поиск информации в реестре утвержденных типов СИ")
-                    url = f"{url_start}/mit/{self.resp_json['result']['items'][0]['mit_id']}"
-                    self.search_thread.url = url
-                    self.search_thread.start()
+                    if 'result' in self.resp_json and 'items' in self.resp_json['result']:
+                        url = f"{url_start}/mit/{self.resp_json['result']['items'][0]['mit_id']}"
+                        self.search_thread.url = url
+                        self.search_thread.start()
+                    else:
+                        self.dialog.close()
 
         # получаем self.mit
         elif "mit/" in self.search_thread.url:
@@ -435,7 +452,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 self._fill_vri_info()
             # self._stop_search()
 
-    # номер свидетельства
+    # -----------------------------ПОЛУЧАЕМ ИНФОРМАЦИЮ ПО VRI----------------------------------------------------------
     def _get_vri(self):
 
         # получаем self.vri_search
@@ -453,9 +470,12 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             elif self.resp_json['result']['count'] == 1:
                 self.vri_search = self.resp_json
                 self._update_progressbar(20, "Поиск информации о результатах поверки СИ")
-                url = f"{url_start}/vri/{self.resp_json['result']['items'][0]['vri_id']}"
-                self.search_thread.url = url
-                self.search_thread.start()
+                if 'result' in self.resp_json:
+                    url = f"{url_start}/vri/{self.resp_json['result']['items'][0]['vri_id']}"
+                    self.search_thread.url = url
+                    self.search_thread.start()
+                else:
+                    self.dialog.close()
             else:
                 QMessageBox.critical(self, "Ошибка", "Слишком много результатов поиска. Уточните номер свидетельства")
                 self.dialog.close()
@@ -579,11 +599,15 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
             elif self.eq_type == "mieta":
                 self._update_progressbar(50, "Поиск информации о результатах поверки СИ")
-                url = f"{url_start}/vri/{self.vri_numbers[0][0]}"
-                self.search_thread.url = url
-                self.search_thread.start()
+                if self.vri_numbers:
+                    url = f"{url_start}/vri/{self.vri_numbers[0][0]}"
+                    self.search_thread.url = url
+                    self.search_thread.start()
+                else:
+                    self.dialog.close()
 
-    # ______________________ЗАПОЛНЕНИЕ ИНФОРМАЦИИ С РЕЕСТРА__________________________
+    # -------------------------------ЗАПОЛНЕНИЕ ИНФОРМАЦИИ С РЕЕСТРА---------------------------------------------------
+
     def _fill_mit(self):
         if 'general' in self.mit:
             general = self.mit['general']
@@ -621,15 +645,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 self.ui.radioButton_MPI_no.setChecked(True)
                 self.ui.lineEdit_MPI.setText("")
 
-    def _update_progressbar(self, val, text):
-        if self.dialog.isActiveWindow():
-            self.dialog.setLabelText(text)
-            self.dialog.setValue(val)
-        else:
-            self.search_thread.is_running = False
-            self._clear_all()
+    # --------------ЗАПОЛНЕНИЕ ИНФОРМАЦИИ С НОМЕРА СВИДЕТЕЛЬСТВА-------------------------------------------------------
 
-    # ______________ЗАПОЛНЕНИЕ ИНФОРМАЦИИ С НОМЕРА СВИДЕТЕЛЬСТВА_____________________
     def _fill_vri(self):
 
         if 'result' in self.vri:
@@ -696,7 +713,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             blocks = ""
             additional_info = ""
 
-            # список поверок для таблицы: дата поверки, годен до или бессрочно, номер свид-ва, результат, поверитель
+            # список поверок для таблицы: дата поверки, годен до или бессрочно, номер свид-ва, результат, поверитель, эталон
             vriInfo = self.vri['result']['vriInfo']
             row.append(QStandardItem(vriInfo['vrfDate']))
             if 'applicable' in vriInfo and 'certNum' in vriInfo['applicable']:
@@ -714,6 +731,10 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 row.append(QStandardItem("БРАК"))
             if 'organization' in vriInfo:
                 row.append(QStandardItem(self.vri_numbers[0][1]))
+            if self.mieta and 'result' in self.mieta:
+                result = self.mieta['result']
+                if 'rankclass' in result and 'schematitle' in result and 'schematype' in result:
+                    row.append(QStandardItem(f"{result['rankclass']}\n{result['schematype']}: {result['schematitle']}"))
             self.tbl_verif_model.appendRow(row)
 
             if 'organization' in vriInfo:
@@ -780,7 +801,6 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                                                 'channels': channels,
                                                 'blocks': blocks,
                                                 'additional_info': additional_info}
-            print(self.vri_info_dict)
             self._update_vri_info(self.tbl_verif_model.item(0, 2).index())
 
             # ЕСЛИ ИЩЕМ ПО НОМЕРУ ЭТАЛОНА, ТО УДАЛЯЕМ ПЕРВУЮ ПОВЕРКУ И ИЩЕМ СЛЕДУЮЩУЮ
@@ -807,6 +827,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                     self.search_thread.start()
                     return
             self._stop_search()
+
+    # --------------------------ОБНОВЛЕНИЕ ИНФОРМАЦИИ ПОЛЕЙ ПРИ ВЫБОРЕ ПОВЕРКИ-----------------------------------------
 
     def _update_vri_info(self, index):
         row = self.tbl_verif_model.itemFromIndex(index).row()
@@ -835,12 +857,15 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 self.ui.lineEdit_vri_noticeNum.setText(cert_num)
             self.ui.plainTextEdit_vri_structure.setPlainText(self.vri_info_dict[cert_num]['structure'])
             self.ui.checkBox_vri_briefIndicator.setChecked(self.vri_info_dict[cert_num]['briefIndicator'])
-            self.ui.plainTextEdit_vri_briefCharacteristics.setPlainText(self.vri_info_dict[cert_num]['briefCharacteristics'])
+            self.ui.plainTextEdit_vri_briefCharacteristics.setPlainText(
+                self.vri_info_dict[cert_num]['briefCharacteristics'])
             self.ui.plainTextEdit_vri_ranges.setPlainText(self.vri_info_dict[cert_num]['ranges'])
             self.ui.plainTextEdit_vri_values.setPlainText(self.vri_info_dict[cert_num]['values'])
             self.ui.plainTextEdit_vri_channels.setPlainText(self.vri_info_dict[cert_num]['channels'])
             self.ui.plainTextEdit_vri_blocks.setPlainText(self.vri_info_dict[cert_num]['blocks'])
             self.ui.plainTextEdit_vri_additional_info.setPlainText(self.vri_info_dict[cert_num]['additional_info'])
+
+    # --------------------------------НАЖАТИЕ КНОПКИ "ПРЕРВАТЬ ПОИСК"--------------------------------------------------
 
     def _stop_search(self):
         self.dialog.setLabelText("Поиск завершен. Данные внесены в форму.")
@@ -848,13 +873,14 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.dialog.setCancelButtonText("Готово")
         self._update_verification_table()
 
+    # ------------------------------------------ОЧИСТКА ВСЕГО----------------------------------------------------------
+
     def _clear_all(self):
 
         # очищаем списки отделов, комнат и работников
         self.lv_dep_model.setStringList([])
         self.cb_worker_model.setStringList([])
         self.cb_room_model.setStringList([])
-
 
         self.mit_search.clear()
         self.mit.clear()
@@ -920,7 +946,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.plainTextEdit_vri_blocks.setPlainText("")
         self.ui.plainTextEdit_vri_additional_info.setPlainText("")
 
-        # ---------------------------------ОЧИСТКА ИНФОРМАЦИИ ОБ ЭТАЛОНАХ---------------------------------------------
+        # ---------------------------------ОЧИСТКА ИНФОРМАЦИИ ОБ ЭТАЛОНАХ----------------------------------------------
         self.ui.lineEdit_mieta_number.setText("")
         self.ui.comboBox_mieta_rank.setCurrentIndex(0)
         self.ui.lineEdit_mieta_rank_title.setText("")
@@ -928,6 +954,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.lineEdit_mieta_schematype.setText("")
         self.ui.plainTextEdit_mieta_schematitle.setPlainText("")
 
+    # ------------------------------------ОБНОВЛЕНИЕ ТАБЛИЦЫ ОБОРУДОВАНИЯ----------------------------------------------
 
     def _update_equip_table(self):
         self.tbl_equip_model.clear()
@@ -955,13 +982,16 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
     def _update_verification_table(self):
         # self.tbl_verif_model.clear()
         self.tbl_verif_model.setHorizontalHeaderLabels(
-            ["Дата поверки", "Годен до", "Номер свидетельства", "Результат", "Организация-поверитель"])
+            ["Дата поверки", "Годен до", "Номер свидетельства", "Результат", "Организация-поверитель", "Эталон"])
         self.ui.tableView_verification_info.setColumnWidth(0, 85)
         self.ui.tableView_verification_info.setColumnWidth(1, 65)
-        self.ui.tableView_verification_info.setColumnWidth(2, 170)
+        self.ui.tableView_verification_info.setColumnWidth(2, 140)
         self.ui.tableView_verification_info.setColumnWidth(3, 70)
-        self.ui.tableView_verification_info.setColumnWidth(4, 280)
+        self.ui.tableView_verification_info.setColumnWidth(4, 210)
+        self.ui.tableView_verification_info.setColumnWidth(5, 280)
         self.ui.tableView_verification_info.resizeRowsToContents()
+
+    # ----------------------------------------НАЖАТИЕ КНОПКИ СОХРАНИТЬ-------------------------------------------------
 
     def _on_save_equip(self):
 
@@ -1108,6 +1138,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
         QMessageBox.information(self, "Сохранено", "Информация сохранена")
 
+    # -------------------НАЖАТИЕ КНОПКИ ПОИСКА ОБОРУДОВАНИЯ ИЗ АРШИНА--------------------------------------------------
+
     def _on_add_equip_arshin(self):
         self._clear_all()
 
@@ -1123,7 +1155,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         dialog.textValueChanged.connect(lambda: self._input_verify(dialog))
         result = dialog.exec()
         if result == QDialog.Accepted:
-            self.number = dialog.textValue()
+            self.number = dialog.textValue().strip()
             if self.eq_type == "" or not dialog.textValue():
                 QMessageBox.warning(self, "Предупреждение", "Введите корректный номер")
                 return
@@ -1133,7 +1165,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             self.dialog.setAutoReset(False)
             self.dialog.setWindowTitle("Поиск информации в ФГИС \"Аршин\"")
             self.dialog.setCancelButtonText("Прервать")
-            self.dialog.canceled.connect(lambda: print("hey"))
+            self.dialog.canceled.connect(self._on_search_stopped)
             self.dialog.setRange(0, 100)
             self.dialog.setWindowModality(Qt.WindowModal)
             if self.eq_type == "mit":
@@ -1163,6 +1195,17 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 url = f"{url_start}/{self.eq_type}?rows=100&search={self.number}"
                 self.search_thread.url = url
                 self.search_thread.start()
+
+    # ---------------------------------------ОСТАНОВКА ПОИСКА----------------------------------------------------------
+
+    def _on_search_stopped(self):
+        self.search_thread.is_running = False
+
+    # ----------------------------------ОБНОВЛЕНИЕ ПРОГРЕССА ПОИСКА----------------------------------------------------
+
+    def _update_progressbar(self, val, text):
+        self.dialog.setLabelText(text)
+        self.dialog.setValue(val)
 
 
 if __name__ == "__main__":
