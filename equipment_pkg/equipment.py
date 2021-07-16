@@ -315,7 +315,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                                 "- номер в реестре;\n"
                                 "- номер эталона единиц величин;\n"
                                 "- номер в перечне СИ, применяемых в качестве эталона;\n"
-                                "- номер свидетельства формата 2021 года.")
+                                "- номер свидетельства формата 2021 года;\n"
+                                "- номер записи сведений в ФИФ ОЕИ.")
             return
         rx_mit = QRegExp("^[1-9][0-9]{0,5}-[0-9]{2}$")
         rx_npe = QRegExp("^гэт[1-9][0-9]{0,2}-(([0-9]{2})|([0-9]{4}))$")
@@ -346,7 +347,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             self.eq_type = "vri"
             self.get_type = "vri"
         elif rx_vri_id.indexIn(dialog.textValue()) == 0:
-            dialog.setLabelText(f"ID свидетельства о поверке")
+            dialog.setLabelText(f"Номер записи сведений в ФИФ ОЕИ")
             self.eq_type = "vri_id"
             self.get_type = "vri_id"
         else:
@@ -1118,12 +1119,12 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                             "- номер эталона единиц величин;\n"
                             "- номер в перечне СИ, применяемых в качестве эталона;\n"
                             "- номер свидетельства формата 2021 года;\n"
-                            "- id поверки.")
+                            "- номер записи сведений в ФИФ ОЕИ.")
         dialog.textValueChanged.connect(lambda: self._input_verify(dialog))
         result = dialog.exec()
         if result == QDialog.Accepted:
             self.number = dialog.textValue()
-            if self.eq_type == "":
+            if self.eq_type == "" or not dialog.textValue():
                 QMessageBox.warning(self, "Предупреждение", "Введите корректный номер")
                 return
 
