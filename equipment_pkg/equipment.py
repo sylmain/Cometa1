@@ -69,6 +69,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.rooms = func.get_rooms()
         self.room_deps = func.get_room_deps()
         self.mi_deps = func.get_mi_deps()
+        self.dep_list = func.get_departments()['dep_name_list']
 
         self.tbl_verif_model = QStandardItemModel(0, 6, parent=self)
         self.tbl_equip_model = QStandardItemModel(0, 5, parent=self)
@@ -110,6 +111,15 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.pushButton_clear.clicked.connect(self._clear_all)
         self.ui.pushButton_delete_mi.clicked.connect(self._on_delete_mi)
         self.ui.comboBox_status.currentTextChanged.connect(self._on_status_changed)
+        self.ui.radioButton_applicable.toggled.connect(self._on_applicable_toggle)
+
+    def _on_applicable_toggle(self, choisen):
+        if choisen:
+            self.ui.groupBox_applicable.show()
+            self.ui.groupBox_inapplicable.hide()
+        else:
+            self.ui.groupBox_applicable.hide()
+            self.ui.groupBox_inapplicable.show()
 
     # -------------------------------------ИЗМЕНЕНИЕ СТАТУСА СИ (ЭТАЛОН, СИ...)-----------------------------------------
 
@@ -160,9 +170,9 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
     # -------------------------------------КЛИК ПО КНОПКЕ "ДОБАВИТЬ ОТДЕЛ"---------------------------------------------
 
     def _on_add_dep(self):
-        dep_list = func.get_departments()['dep_name_list']
         cur_dep_list = self.lv_dep_model.stringList()
-        choose_list = sorted(list(set(dep_list) - set(cur_dep_list)))
+        choose_list = sorted(list(set(self.dep_list) - set(cur_dep_list)))
+        mi_id = self.ui.lineEdit_equip_id.text()
         if choose_list:
             dep_name, ok = QInputDialog.getItem(self, "Выбор отдела",
                                                 "Выберите отдел, который использует данное оборудование",
@@ -171,19 +181,32 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 cur_dep_list.append(dep_name)
                 self.lv_dep_model.setStringList(sorted(cur_dep_list))
                 dep_id = func.get_dep_id_from_name(dep_name, self.departments['dep_dict'])
+
                 # добавляем сотрудников
                 cur_worker_list = self.cb_worker_model.stringList()
                 cur_worker_list += \
                     func.get_workers_list([dep_id], self.workers['worker_dict'], self.worker_deps['dep_workers_dict'])[
                         'workers']
+                if "" not in cur_worker_list:
+                    cur_worker_list.insert(0, "")
                 self.cb_worker_model.setStringList(sorted(set(cur_worker_list)))
+
                 # добавляем помещения
                 cur_room_list = self.cb_room_model.stringList()
                 cur_room_list += \
                     func.get_rooms_list([dep_id], self.rooms['room_dict'], self.room_deps['dep_rooms_dict'])['rooms']
+                if "" not in cur_room_list:
+                    cur_room_list.insert(0, "")
                 self.cb_room_model.setStringList(sorted(set(cur_room_list)))
+
+                if mi_id:
+                    self.ui.comboBox_responsiblePerson.setCurrentText(
+                        func.get_worker_fio_from_id(self.mis_dict[mi_id]['responsible_person'],
+                                                    self.workers['worker_dict']))
+                    self.ui.comboBox_room.setCurrentText(
+                        func.get_room_number_from_id(self.mis_dict[mi_id]['room'], self.rooms['room_dict']))
         else:
-            QMessageBox.information(self, "Выбора нет", f"Все подразделения включены в список")
+            QMessageBox.information(self, "Выбора нет", "Все подразделения включены в список")
 
     # ----------------------------------КЛИК ПО КНОПКЕ "УДАЛИТЬ ОТДЕЛ"-------------------------------------------------
 
@@ -193,16 +216,31 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         dep_name = self.ui.listView_departments.currentIndex().data()
         cur_dep_list = self.lv_dep_model.stringList()
         cur_dep_list.remove(dep_name)
+        mi_id = self.ui.lineEdit_equip_id.text()
+
         self.lv_dep_model.setStringList(cur_dep_list)
         dep_list = list()
+
         for dep in cur_dep_list:
             dep_id = func.get_dep_id_from_name(dep, self.departments['dep_dict'])
             dep_list.append(dep_id)
+
         worker_list = func.get_workers_list(dep_list, self.workers['worker_dict'],
                                             self.worker_deps['dep_workers_dict'])['workers']
         room_list = func.get_rooms_list(dep_list, self.rooms['room_dict'], self.room_deps['dep_rooms_dict'])['rooms']
+        if "" not in worker_list:
+            worker_list.insert(0, "")
+        if "" not in room_list:
+            room_list.insert(0, "")
         self.cb_worker_model.setStringList(worker_list)
         self.cb_room_model.setStringList(room_list)
+
+        if mi_id:
+            self.ui.comboBox_responsiblePerson.setCurrentText(
+                func.get_worker_fio_from_id(self.mis_dict[mi_id]['responsible_person'],
+                                            self.workers['worker_dict']))
+            self.ui.comboBox_room.setCurrentText(
+                func.get_room_number_from_id(self.mis_dict[mi_id]['room'], self.rooms['room_dict']))
 
     # ----------------------ОБНОВЛЕНИЕ ПОЛЕЙ ИНФОРМАЦИИ ПРИ ПЕРЕКЛЮЧЕНИИ ОБОРУДОВАНИЯ----------------------------------
 
@@ -748,7 +786,10 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             if 'validDate' in vriInfo:
                 validDate = vriInfo['validDate']
             if 'vriType' in vriInfo:
-                vriType = vriInfo['vriType']
+                if vriInfo['vriType'] == "2":
+                    vriType = "периодическая"
+                elif vriInfo['vriType'] == "1":
+                    vriType = "первичная"
             if 'docTitle' in vriInfo:
                 docTitle = vriInfo['docTitle']
             if 'applicable' in vriInfo:
@@ -828,7 +869,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                     return
             self._stop_search()
 
-    # --------------------------ОБНОВЛЕНИЕ ИНФОРМАЦИИ ПОЛЕЙ ПРИ ВЫБОРЕ ПОВЕРКИ-----------------------------------------
+    # -------------------ОБНОВЛЕНИЕ ИНФОРМАЦИИ ПОЛЕЙ ПРИ ВЫБОРЕ ПОВЕРКИ В ТАБЛИЦЕ ПОВЕРОК------------------------------
 
     def _update_vri_info(self, index):
         row = self.tbl_verif_model.itemFromIndex(index).row()
@@ -838,22 +879,17 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             self.ui.plainTextEdit_vri_miOwner.setPlainText(self.vri_info_dict[cert_num]['miOwner'])
             self.ui.lineEdit_vrfDate.setText(self.vri_info_dict[cert_num]['vrfDate'])
             self.ui.lineEdit_vri_validDate.setText(self.vri_info_dict[cert_num]['validDate'])
-            if self.vri_info_dict[cert_num]['vriType'] == "2":
-                self.ui.lineEdit_vri_vriType.setText("периодическая")
-            elif self.vri_info_dict[cert_num]['vriType'] == "1":
-                self.ui.lineEdit_vri_vriType.setText("первичная")
+            self.ui.lineEdit_vri_vriType.setText(self.vri_info_dict[cert_num]['vriType'])
             self.ui.plainTextEdit_vri_docTitle.setPlainText(self.vri_info_dict[cert_num]['docTitle'])
             if self.vri_info_dict[cert_num]['applicable'] == 1:
-                self.ui.groupBox_inapplicable.hide()
-                self.ui.groupBox_applicable.show()
+                self.ui.radioButton_applicable.setChecked(True)
                 self.ui.lineEdit_vri_certNum.setText(cert_num)
                 self.ui.lineEdit_vri_signCipher.setText(self.vri_info_dict[cert_num]['signCipher'])
                 self.ui.lineEdit_vri_stickerNum.setText(self.vri_info_dict[cert_num]['stickerNum'])
                 self.ui.checkBox_vri_signPass.setChecked(self.vri_info_dict[cert_num]['signPass'])
                 self.ui.checkBox_vri_signMi.setChecked(self.vri_info_dict[cert_num]['signMi'])
             else:
-                self.ui.groupBox_applicable.hide()
-                self.ui.groupBox_inapplicable.show()
+                self.ui.radioButton_inapplicable.setChecked(True)
                 self.ui.lineEdit_vri_noticeNum.setText(cert_num)
             self.ui.plainTextEdit_vri_structure.setPlainText(self.vri_info_dict[cert_num]['structure'])
             self.ui.checkBox_vri_briefIndicator.setChecked(self.vri_info_dict[cert_num]['briefIndicator'])
@@ -929,8 +965,9 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.lineEdit_vri_validDate.setText("")
         self.ui.lineEdit_vri_vriType.setText("")
         self.ui.plainTextEdit_vri_docTitle.setPlainText("")
-        self.ui.groupBox_inapplicable.show()
-        self.ui.groupBox_applicable.show()
+        # self.ui.groupBox_inapplicable.show()
+        # self.ui.groupBox_applicable.show()
+        self.ui.radioButton_applicable.setChecked(True)
         self.ui.lineEdit_vri_certNum.setText("")
         self.ui.lineEdit_vri_signCipher.setText("")
         self.ui.lineEdit_vri_stickerNum.setText("")
@@ -1013,6 +1050,23 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         room_id = func.get_room_id_from_number(self.ui.comboBox_room.currentText(), self.rooms['room_dict'])
 
         card_number = self.ui.lineEdit_reg_card_number.text()
+        signPass = 0
+        signMi = 0
+        briefIndicator = 0
+
+        if self.ui.radioButton_applicable.isChecked():
+            applicable = 1
+            cert_num = self.ui.lineEdit_vri_certNum.text()
+            if self.ui.checkBox_vri_signPass.isChecked():
+                signPass = 1
+            if self.ui.checkBox_vri_signMi.isChecked():
+                signMi = 1
+        else:
+            applicable = 0
+            cert_num = self.ui.lineEdit_vri_noticeNum.text()
+
+        if self.ui.checkBox_vri_briefIndicator.isChecked():
+            briefIndicator = 1
 
         sql_replace = f"REPLACE INTO mis VALUES (" \
                       f"{mi_id}, " \
@@ -1070,39 +1124,37 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                       f"'{self.ui.plainTextEdit_mieta_schematitle.toPlainText()}', " \
                       f"'{self.ui.lineEdit_mieta_rank_title.text()}');"
 
-        sql_replace_1 = f"REPLACE INTO mis_vri_info VALUES (" \
-                        f"{mi_id}, " \
-                        f"'{self.ui.lineEdit_reg_card_number.text()}', " \
-                        f"{int(measure_code_id)}, " \
-                        f"'{self.ui.comboBox_status.currentText()}', " \
-                        f"'{self.ui.lineEdit_reestr.text()}', " \
-                        f"'{self.ui.plainTextEdit_title.toPlainText()}', " \
-                        f"'{self.ui.plainTextEdit_type.toPlainText()}', " \
-                        f"'{self.ui.lineEdit_modification.text()}', " \
-                        f"'{self.ui.lineEdit_number.text()}', " \
-                        f"'{self.ui.lineEdit_inv_number.text()}', " \
-                        f"'{self.ui.plainTextEdit_manufacturer.toPlainText()}', " \
-                        f"'{self.ui.lineEdit_manuf_year.text()}', " \
-                        f"'{self.ui.lineEdit_expl_year.text()}', " \
-                        f"'{self.ui.lineEdit_diapazon.text()}', " \
-                        f"'{self.ui.lineEdit_PG.text()}', " \
-                        f"'{self.ui.lineEdit_KT.text()}', " \
-                        f"'{self.ui.plainTextEdit_other_characteristics.toPlainText()}', " \
-                        f"'{self.ui.lineEdit_MPI.text()}', " \
-                        f"'{self.ui.plainTextEdit_purpose.toPlainText()}', " \
-                        f"{int(resp_person_id)}, " \
-                        f"'{self.ui.plainTextEdit_personal.toPlainText()}', " \
-                        f"{int(room_id)}, " \
-                        f"'{self.ui.plainTextEdit_software_inner.toPlainText()}', " \
-                        f"'{self.ui.plainTextEdit_software_outer.toPlainText()}', " \
-                        f"{int(self.ui.checkBox_has_manual.checkState())}, " \
-                        f"{int(self.ui.checkBox_has_pasport.checkState())}, " \
-                        f"{int(self.ui.checkBox_has_verif_method.checkState())}, " \
-                        f"'{self.ui.lineEdit_period_TO.text()}', " \
-                        f"'{self.ui.plainTextEdit_owner.toPlainText()}', " \
-                        f"'{self.ui.plainTextEdit_owner_contract.toPlainText()}');"
+        vri_id = self.ui.lineEdit_vri_id.text()
+        if not vri_id:
+            vri_id = "NULL"
 
+        sql_replace_1 = f"REPLACE INTO mis_vri_info VALUES (" \
+                        f"{vri_id}, " \
+                        f"{mi_id}, " \
+                        f"'{self.ui.plainTextEdit_vri_organization.toPlainText()}', " \
+                        f"'{self.ui.lineEdit_vri_signCipher.text()}', " \
+                        f"'{self.ui.plainTextEdit_vri_miOwner.toPlainText()}', " \
+                        f"'{self.ui.lineEdit_vrfDate.text()}', " \
+                        f"'{self.ui.lineEdit_vri_validDate.text()}', " \
+                        f"'{self.ui.lineEdit_vri_vriType.text()}', " \
+                        f"'{self.ui.plainTextEdit_vri_docTitle.toPlainText()}', " \
+                        f"{applicable}, " \
+                        f"'{cert_num}', " \
+                        f"'{self.ui.lineEdit_vri_stickerNum.text()}', " \
+                        f"{signPass}, " \
+                        f"{signMi}, " \
+                        f"'{self.ui.plainTextEdit_vri_inapplicable_reason.toPlainText()}', " \
+                        f"'{self.ui.plainTextEdit_vri_structure.toPlainText()}', " \
+                        f"{briefIndicator}, " \
+                        f"'{self.ui.plainTextEdit_vri_briefCharacteristics.toPlainText()}', " \
+                        f"'{self.ui.plainTextEdit_vri_ranges.toPlainText()}', " \
+                        f"'{self.ui.plainTextEdit_vri_values.toPlainText()}', " \
+                        f"'{self.ui.plainTextEdit_vri_channels.toPlainText()}', " \
+                        f"'{self.ui.plainTextEdit_vri_blocks.toPlainText()}', " \
+                        f"'{self.ui.plainTextEdit_vri_additional_info.toPlainText()}', " \
+                        f"'');"
         MySQLConnection.execute_query(connection, sql_replace)
+        MySQLConnection.execute_query(connection, sql_replace_1)
 
         old_deps = set()
         if mi_id in self.mi_deps['mi_deps_dict']:

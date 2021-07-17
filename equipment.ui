@@ -64,6 +64,260 @@
                <property name="verticalSpacing">
                 <number>6</number>
                </property>
+               <item row="5" column="0" colspan="2">
+                <widget class="QGroupBox" name="groupBox">
+                 <property name="title">
+                  <string>Дополнительная информация</string>
+                 </property>
+                 <layout class="QFormLayout" name="formLayout_3">
+                  <property name="labelAlignment">
+                   <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                  </property>
+                  <item row="2" column="0">
+                   <widget class="QLabel" name="label_37">
+                    <property name="text">
+                     <string>Допущенный персонал</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="0" column="0">
+                   <widget class="QLabel" name="label">
+                    <property name="text">
+                     <string>Назначение СИ</string>
+                    </property>
+                    <property name="alignment">
+                     <set>Qt::AlignRight|Qt::AlignTop|Qt::AlignTrailing</set>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="0" column="1">
+                   <widget class="QPlainTextEdit" name="plainTextEdit_purpose">
+                    <property name="maximumSize">
+                     <size>
+                      <width>16777215</width>
+                      <height>50</height>
+                     </size>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="2" column="1">
+                   <widget class="QPlainTextEdit" name="plainTextEdit_personal">
+                    <property name="maximumSize">
+                     <size>
+                      <width>16777215</width>
+                      <height>50</height>
+                     </size>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+               <item row="3" column="1">
+                <widget class="QGroupBox" name="groupBox_13">
+                 <property name="title">
+                  <string>Имеющаяся документация</string>
+                 </property>
+                 <layout class="QVBoxLayout" name="verticalLayout_7">
+                  <item>
+                   <widget class="QCheckBox" name="checkBox_has_pasport">
+                    <property name="text">
+                     <string>Паспорт</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QCheckBox" name="checkBox_has_manual">
+                    <property name="text">
+                     <string>Руководство по эксплуатации</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QCheckBox" name="checkBox_has_verif_method">
+                    <property name="text">
+                     <string>Методика поверки</string>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+               <item row="1" column="0" colspan="2">
+                <widget class="QGroupBox" name="groupBox_3">
+                 <property name="title">
+                  <string>Принадлежность</string>
+                 </property>
+                 <layout class="QGridLayout" name="gridLayout_5" columnstretch="1,0,0,0,0,0">
+                  <item row="0" column="0">
+                   <widget class="QLabel" name="label_66">
+                    <property name="sizePolicy">
+                     <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
+                      <horstretch>0</horstretch>
+                      <verstretch>0</verstretch>
+                     </sizepolicy>
+                    </property>
+                    <property name="text">
+                     <string>Отделы</string>
+                    </property>
+                    <property name="alignment">
+                     <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="1" column="0" colspan="5">
+                   <widget class="QListView" name="listView_departments">
+                    <property name="sizePolicy">
+                     <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
+                      <horstretch>0</horstretch>
+                      <verstretch>0</verstretch>
+                     </sizepolicy>
+                    </property>
+                    <property name="maximumSize">
+                     <size>
+                      <width>16777215</width>
+                      <height>60</height>
+                     </size>
+                    </property>
+                    <property name="frameShape">
+                     <enum>QFrame::Box</enum>
+                    </property>
+                    <property name="frameShadow">
+                     <enum>QFrame::Sunken</enum>
+                    </property>
+                    <property name="editTriggers">
+                     <set>QAbstractItemView::NoEditTriggers</set>
+                    </property>
+                    <property name="alternatingRowColors">
+                     <bool>true</bool>
+                    </property>
+                    <property name="selectionBehavior">
+                     <enum>QAbstractItemView::SelectRows</enum>
+                    </property>
+                    <property name="resizeMode">
+                     <enum>QListView::Adjust</enum>
+                    </property>
+                    <property name="wordWrap">
+                     <bool>true</bool>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="2" column="0">
+                   <widget class="QLabel" name="label_67">
+                    <property name="sizePolicy">
+                     <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+                      <horstretch>0</horstretch>
+                      <verstretch>0</verstretch>
+                     </sizepolicy>
+                    </property>
+                    <property name="text">
+                     <string>Ответственный</string>
+                    </property>
+                    <property name="alignment">
+                     <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="2" column="3">
+                   <widget class="QComboBox" name="comboBox_room">
+                    <property name="minimumSize">
+                     <size>
+                      <width>110</width>
+                      <height>0</height>
+                     </size>
+                    </property>
+                    <property name="maximumSize">
+                     <size>
+                      <width>200</width>
+                      <height>16777215</height>
+                     </size>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="2" column="2">
+                   <widget class="QLabel" name="label_68">
+                    <property name="sizePolicy">
+                     <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
+                      <horstretch>0</horstretch>
+                      <verstretch>0</verstretch>
+                     </sizepolicy>
+                    </property>
+                    <property name="text">
+                     <string>Помещение</string>
+                    </property>
+                    <property name="alignment">
+                     <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="2" column="1">
+                   <widget class="QComboBox" name="comboBox_responsiblePerson">
+                    <property name="minimumSize">
+                     <size>
+                      <width>130</width>
+                      <height>0</height>
+                     </size>
+                    </property>
+                    <property name="maximumSize">
+                     <size>
+                      <width>200</width>
+                      <height>16777215</height>
+                     </size>
+                    </property>
+                    <property name="duplicatesEnabled">
+                     <bool>false</bool>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="2" column="4" colspan="2">
+                   <spacer name="horizontalSpacer_3">
+                    <property name="orientation">
+                     <enum>Qt::Horizontal</enum>
+                    </property>
+                    <property name="sizeHint" stdset="0">
+                     <size>
+                      <width>40</width>
+                      <height>20</height>
+                     </size>
+                    </property>
+                   </spacer>
+                  </item>
+                  <item row="1" column="5">
+                   <layout class="QVBoxLayout" name="verticalLayout_5">
+                    <property name="spacing">
+                     <number>6</number>
+                    </property>
+                    <item>
+                     <widget class="QPushButton" name="pushButton_add_dep">
+                      <property name="maximumSize">
+                       <size>
+                        <width>23</width>
+                        <height>16777215</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string>+</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QPushButton" name="pushButton_remove_dep">
+                      <property name="maximumSize">
+                       <size>
+                        <width>23</width>
+                        <height>16777215</height>
+                       </size>
+                      </property>
+                      <property name="text">
+                       <string>-</string>
+                      </property>
+                     </widget>
+                    </item>
+                   </layout>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
                <item row="2" column="0" rowspan="2">
                 <widget class="QGroupBox" name="groupBox_9">
                  <property name="styleSheet">
@@ -324,316 +578,6 @@
                  </layout>
                 </widget>
                </item>
-               <item row="1" column="0" colspan="2">
-                <widget class="QGroupBox" name="groupBox_3">
-                 <property name="title">
-                  <string>Принадлежность</string>
-                 </property>
-                 <layout class="QGridLayout" name="gridLayout_5" columnstretch="1,0,0,0,0,0">
-                  <item row="0" column="0">
-                   <widget class="QLabel" name="label_66">
-                    <property name="sizePolicy">
-                     <sizepolicy hsizetype="Minimum" vsizetype="Preferred">
-                      <horstretch>0</horstretch>
-                      <verstretch>0</verstretch>
-                     </sizepolicy>
-                    </property>
-                    <property name="text">
-                     <string>Отделы</string>
-                    </property>
-                    <property name="alignment">
-                     <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="1" column="0" colspan="5">
-                   <widget class="QListView" name="listView_departments">
-                    <property name="sizePolicy">
-                     <sizepolicy hsizetype="Expanding" vsizetype="Expanding">
-                      <horstretch>0</horstretch>
-                      <verstretch>0</verstretch>
-                     </sizepolicy>
-                    </property>
-                    <property name="maximumSize">
-                     <size>
-                      <width>16777215</width>
-                      <height>60</height>
-                     </size>
-                    </property>
-                    <property name="frameShape">
-                     <enum>QFrame::Box</enum>
-                    </property>
-                    <property name="frameShadow">
-                     <enum>QFrame::Sunken</enum>
-                    </property>
-                    <property name="editTriggers">
-                     <set>QAbstractItemView::NoEditTriggers</set>
-                    </property>
-                    <property name="alternatingRowColors">
-                     <bool>true</bool>
-                    </property>
-                    <property name="selectionBehavior">
-                     <enum>QAbstractItemView::SelectRows</enum>
-                    </property>
-                    <property name="resizeMode">
-                     <enum>QListView::Adjust</enum>
-                    </property>
-                    <property name="wordWrap">
-                     <bool>true</bool>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="2" column="0">
-                   <widget class="QLabel" name="label_67">
-                    <property name="sizePolicy">
-                     <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-                      <horstretch>0</horstretch>
-                      <verstretch>0</verstretch>
-                     </sizepolicy>
-                    </property>
-                    <property name="text">
-                     <string>Ответственный</string>
-                    </property>
-                    <property name="alignment">
-                     <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="2" column="3">
-                   <widget class="QComboBox" name="comboBox_room">
-                    <property name="minimumSize">
-                     <size>
-                      <width>110</width>
-                      <height>0</height>
-                     </size>
-                    </property>
-                    <property name="maximumSize">
-                     <size>
-                      <width>200</width>
-                      <height>16777215</height>
-                     </size>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="2" column="2">
-                   <widget class="QLabel" name="label_68">
-                    <property name="sizePolicy">
-                     <sizepolicy hsizetype="Fixed" vsizetype="Preferred">
-                      <horstretch>0</horstretch>
-                      <verstretch>0</verstretch>
-                     </sizepolicy>
-                    </property>
-                    <property name="text">
-                     <string>Помещение</string>
-                    </property>
-                    <property name="alignment">
-                     <set>Qt::AlignLeading|Qt::AlignLeft|Qt::AlignVCenter</set>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="2" column="1">
-                   <widget class="QComboBox" name="comboBox_responsiblePerson">
-                    <property name="minimumSize">
-                     <size>
-                      <width>130</width>
-                      <height>0</height>
-                     </size>
-                    </property>
-                    <property name="maximumSize">
-                     <size>
-                      <width>200</width>
-                      <height>16777215</height>
-                     </size>
-                    </property>
-                    <property name="duplicatesEnabled">
-                     <bool>false</bool>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="2" column="4" colspan="2">
-                   <spacer name="horizontalSpacer_3">
-                    <property name="orientation">
-                     <enum>Qt::Horizontal</enum>
-                    </property>
-                    <property name="sizeHint" stdset="0">
-                     <size>
-                      <width>40</width>
-                      <height>20</height>
-                     </size>
-                    </property>
-                   </spacer>
-                  </item>
-                  <item row="1" column="5">
-                   <layout class="QVBoxLayout" name="verticalLayout_5">
-                    <property name="spacing">
-                     <number>6</number>
-                    </property>
-                    <item>
-                     <widget class="QPushButton" name="pushButton_add_dep">
-                      <property name="maximumSize">
-                       <size>
-                        <width>23</width>
-                        <height>16777215</height>
-                       </size>
-                      </property>
-                      <property name="text">
-                       <string>+</string>
-                      </property>
-                     </widget>
-                    </item>
-                    <item>
-                     <widget class="QPushButton" name="pushButton_remove_dep">
-                      <property name="maximumSize">
-                       <size>
-                        <width>23</width>
-                        <height>16777215</height>
-                       </size>
-                      </property>
-                      <property name="text">
-                       <string>-</string>
-                      </property>
-                     </widget>
-                    </item>
-                   </layout>
-                  </item>
-                 </layout>
-                </widget>
-               </item>
-               <item row="2" column="1">
-                <widget class="QGroupBox" name="groupBox_12">
-                 <property name="title">
-                  <string>Метрологические характеристики</string>
-                 </property>
-                 <layout class="QVBoxLayout" name="verticalLayout_6">
-                  <item>
-                   <widget class="QLabel" name="label_60">
-                    <property name="text">
-                     <string>Диапазон измерений</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item>
-                   <widget class="QLineEdit" name="lineEdit_diapazon"/>
-                  </item>
-                  <item>
-                   <widget class="QLabel" name="label_61">
-                    <property name="text">
-                     <string>Погрешность</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item>
-                   <widget class="QLineEdit" name="lineEdit_PG"/>
-                  </item>
-                  <item>
-                   <widget class="QLabel" name="label_62">
-                    <property name="text">
-                     <string>Класс точности</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item>
-                   <widget class="QLineEdit" name="lineEdit_KT"/>
-                  </item>
-                  <item>
-                   <widget class="QLabel" name="label_63">
-                    <property name="text">
-                     <string>Прочие характеристики</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item>
-                   <widget class="QPlainTextEdit" name="plainTextEdit_other_characteristics">
-                    <property name="maximumSize">
-                     <size>
-                      <width>16777215</width>
-                      <height>100</height>
-                     </size>
-                    </property>
-                   </widget>
-                  </item>
-                 </layout>
-                </widget>
-               </item>
-               <item row="3" column="1">
-                <widget class="QGroupBox" name="groupBox_13">
-                 <property name="title">
-                  <string>Имеющаяся документация</string>
-                 </property>
-                 <layout class="QVBoxLayout" name="verticalLayout_7">
-                  <item>
-                   <widget class="QCheckBox" name="checkBox_has_pasport">
-                    <property name="text">
-                     <string>Паспорт</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item>
-                   <widget class="QCheckBox" name="checkBox_has_manual">
-                    <property name="text">
-                     <string>Руководство по эксплуатации</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item>
-                   <widget class="QCheckBox" name="checkBox_has_verif_method">
-                    <property name="text">
-                     <string>Методика поверки</string>
-                    </property>
-                   </widget>
-                  </item>
-                 </layout>
-                </widget>
-               </item>
-               <item row="5" column="0" colspan="2">
-                <widget class="QGroupBox" name="groupBox">
-                 <property name="title">
-                  <string>Дополнительная информация</string>
-                 </property>
-                 <layout class="QFormLayout" name="formLayout_3">
-                  <property name="labelAlignment">
-                   <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-                  </property>
-                  <item row="2" column="0">
-                   <widget class="QLabel" name="label_37">
-                    <property name="text">
-                     <string>Допущенный персонал</string>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="0" column="0">
-                   <widget class="QLabel" name="label">
-                    <property name="text">
-                     <string>Назначение СИ</string>
-                    </property>
-                    <property name="alignment">
-                     <set>Qt::AlignRight|Qt::AlignTop|Qt::AlignTrailing</set>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="0" column="1">
-                   <widget class="QPlainTextEdit" name="plainTextEdit_purpose">
-                    <property name="maximumSize">
-                     <size>
-                      <width>16777215</width>
-                      <height>50</height>
-                     </size>
-                    </property>
-                   </widget>
-                  </item>
-                  <item row="2" column="1">
-                   <widget class="QPlainTextEdit" name="plainTextEdit_personal">
-                    <property name="maximumSize">
-                     <size>
-                      <width>16777215</width>
-                      <height>50</height>
-                     </size>
-                    </property>
-                   </widget>
-                  </item>
-                 </layout>
-                </widget>
-               </item>
                <item row="4" column="0" colspan="2">
                 <widget class="QGroupBox" name="groupBox_4">
                  <property name="title">
@@ -688,6 +632,62 @@
                      <size>
                       <width>16777215</width>
                       <height>35</height>
+                     </size>
+                    </property>
+                   </widget>
+                  </item>
+                 </layout>
+                </widget>
+               </item>
+               <item row="2" column="1">
+                <widget class="QGroupBox" name="groupBox_12">
+                 <property name="title">
+                  <string>Метрологические характеристики</string>
+                 </property>
+                 <layout class="QVBoxLayout" name="verticalLayout_6">
+                  <item>
+                   <widget class="QLabel" name="label_60">
+                    <property name="text">
+                     <string>Диапазон измерений</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLineEdit" name="lineEdit_diapazon"/>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="label_61">
+                    <property name="text">
+                     <string>Погрешность</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLineEdit" name="lineEdit_PG"/>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="label_62">
+                    <property name="text">
+                     <string>Класс точности</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QLineEdit" name="lineEdit_KT"/>
+                  </item>
+                  <item>
+                   <widget class="QLabel" name="label_63">
+                    <property name="text">
+                     <string>Прочие характеристики</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QPlainTextEdit" name="plainTextEdit_other_characteristics">
+                    <property name="maximumSize">
+                     <size>
+                      <width>16777215</width>
+                      <height>100</height>
                      </size>
                     </property>
                    </widget>
@@ -863,19 +863,6 @@
                  </layout>
                 </widget>
                </item>
-               <item row="7" column="0" colspan="2">
-                <spacer name="verticalSpacer">
-                 <property name="orientation">
-                  <enum>Qt::Vertical</enum>
-                 </property>
-                 <property name="sizeHint" stdset="0">
-                  <size>
-                   <width>20</width>
-                   <height>40</height>
-                  </size>
-                 </property>
-                </spacer>
-               </item>
                <item row="6" column="0" colspan="2">
                 <widget class="QGroupBox" name="groupBox_7">
                  <property name="title">
@@ -924,6 +911,19 @@
                   </item>
                  </layout>
                 </widget>
+               </item>
+               <item row="7" column="0" colspan="2">
+                <spacer name="verticalSpacer">
+                 <property name="orientation">
+                  <enum>Qt::Vertical</enum>
+                 </property>
+                 <property name="sizeHint" stdset="0">
+                  <size>
+                   <width>20</width>
+                   <height>40</height>
+                  </size>
+                 </property>
+                </spacer>
                </item>
               </layout>
              </widget>
@@ -1258,7 +1258,7 @@
               <property name="maximumSize">
                <size>
                 <width>16777215</width>
-                <height>200</height>
+                <height>173</height>
                </size>
               </property>
               <property name="title">
@@ -1495,14 +1495,20 @@
            <layout class="QGridLayout" name="gridLayout_6">
             <item row="2" column="0" colspan="2">
              <widget class="QGroupBox" name="groupBox_5">
+              <property name="maximumSize">
+               <size>
+                <width>16777215</width>
+                <height>205</height>
+               </size>
+              </property>
               <property name="title">
                <string>Детальная информация</string>
               </property>
               <layout class="QGridLayout" name="gridLayout_15">
-               <item row="3" column="1">
+               <item row="4" column="1">
                 <widget class="QLineEdit" name="lineEdit_vrfDate"/>
                </item>
-               <item row="3" column="0">
+               <item row="4" column="0">
                 <widget class="QLabel" name="label_12">
                  <property name="text">
                   <string>Дата поверки</string>
@@ -1515,23 +1521,7 @@
                  </property>
                 </widget>
                </item>
-               <item row="5" column="1">
-                <widget class="QLineEdit" name="lineEdit_vri_vriType"/>
-               </item>
-               <item row="5" column="0">
-                <widget class="QLabel" name="label_14">
-                 <property name="text">
-                  <string>Тип поверки</string>
-                 </property>
-                 <property name="alignment">
-                  <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
-                 </property>
-                 <property name="wordWrap">
-                  <bool>true</bool>
-                 </property>
-                </widget>
-               </item>
-               <item row="0" column="0">
+               <item row="1" column="0">
                 <widget class="QLabel" name="label_9">
                  <property name="text">
                   <string>Организация-поверитель</string>
@@ -1544,7 +1534,7 @@
                  </property>
                 </widget>
                </item>
-               <item row="6" column="0">
+               <item row="7" column="0">
                 <widget class="QLabel" name="label_21">
                  <property name="text">
                   <string>Методика поверки</string>
@@ -1557,7 +1547,7 @@
                  </property>
                 </widget>
                </item>
-               <item row="2" column="0">
+               <item row="3" column="0">
                 <widget class="QLabel" name="label_11">
                  <property name="text">
                   <string>ЮЛ (ФЛ), передавшее СИ на поверку</string>
@@ -1570,7 +1560,7 @@
                  </property>
                 </widget>
                </item>
-               <item row="3" column="2">
+               <item row="4" column="2">
                 <widget class="QLabel" name="label_13">
                  <property name="text">
                   <string>Годен до</string>
@@ -1583,7 +1573,7 @@
                  </property>
                 </widget>
                </item>
-               <item row="6" column="1" colspan="4">
+               <item row="7" column="1" colspan="4">
                 <widget class="QPlainTextEdit" name="plainTextEdit_vri_docTitle">
                  <property name="maximumSize">
                   <size>
@@ -1593,7 +1583,7 @@
                  </property>
                 </widget>
                </item>
-               <item row="2" column="1" colspan="4">
+               <item row="3" column="1" colspan="4">
                 <widget class="QPlainTextEdit" name="plainTextEdit_vri_miOwner">
                  <property name="maximumSize">
                   <size>
@@ -1606,7 +1596,7 @@
                  </property>
                 </widget>
                </item>
-               <item row="0" column="1" colspan="4">
+               <item row="1" column="1" colspan="4">
                 <widget class="QPlainTextEdit" name="plainTextEdit_vri_organization">
                  <property name="maximumSize">
                   <size>
@@ -1616,26 +1606,52 @@
                  </property>
                 </widget>
                </item>
-               <item row="3" column="3">
+               <item row="4" column="3">
                 <widget class="QLineEdit" name="lineEdit_vri_validDate"/>
+               </item>
+               <item row="0" column="4">
+                <widget class="QLineEdit" name="lineEdit_vri_id">
+                 <property name="enabled">
+                  <bool>false</bool>
+                 </property>
+                 <property name="maximumSize">
+                  <size>
+                   <width>50</width>
+                   <height>16777215</height>
+                  </size>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="3">
+                <widget class="QLabel" name="label_23">
+                 <property name="text">
+                  <string>id</string>
+                 </property>
+                 <property name="alignment">
+                  <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="0">
+                <widget class="QLabel" name="label_14">
+                 <property name="text">
+                  <string>Тип поверки</string>
+                 </property>
+                 <property name="alignment">
+                  <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
+                 </property>
+                 <property name="wordWrap">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+               <item row="0" column="1">
+                <widget class="QLineEdit" name="lineEdit_vri_vriType"/>
                </item>
               </layout>
              </widget>
             </item>
             <item row="6" column="0" colspan="2">
-             <spacer name="verticalSpacer_2">
-              <property name="orientation">
-               <enum>Qt::Vertical</enum>
-              </property>
-              <property name="sizeHint" stdset="0">
-               <size>
-                <width>20</width>
-                <height>40</height>
-               </size>
-              </property>
-             </spacer>
-            </item>
-            <item row="5" column="0" colspan="2">
              <widget class="QGroupBox" name="groupBox_6">
               <property name="title">
                <string>Дополнительные сведения</string>
@@ -1812,8 +1828,14 @@
               </layout>
              </widget>
             </item>
-            <item row="3" column="0" colspan="2">
+            <item row="4" column="0" colspan="2">
              <widget class="QGroupBox" name="groupBox_applicable">
+              <property name="maximumSize">
+               <size>
+                <width>16777215</width>
+                <height>95</height>
+               </size>
+              </property>
               <property name="title">
                <string>Годен</string>
               </property>
@@ -1947,8 +1969,20 @@
               </layout>
              </widget>
             </item>
-            <item row="4" column="0" colspan="2">
+            <item row="5" column="0" colspan="2">
              <widget class="QGroupBox" name="groupBox_inapplicable">
+              <property name="sizePolicy">
+               <sizepolicy hsizetype="Preferred" vsizetype="Preferred">
+                <horstretch>0</horstretch>
+                <verstretch>0</verstretch>
+               </sizepolicy>
+              </property>
+              <property name="maximumSize">
+               <size>
+                <width>16777215</width>
+                <height>97</height>
+               </size>
+              </property>
               <property name="title">
                <string>Брак</string>
               </property>
@@ -1998,6 +2032,55 @@
                   </size>
                  </property>
                 </widget>
+               </item>
+              </layout>
+             </widget>
+            </item>
+            <item row="7" column="0" colspan="2">
+             <spacer name="verticalSpacer_2">
+              <property name="orientation">
+               <enum>Qt::Vertical</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>20</width>
+                <height>40</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+            <item row="3" column="0" colspan="2">
+             <widget class="QGroupBox" name="groupBox_8">
+              <property name="title">
+               <string>Пригодность</string>
+              </property>
+              <layout class="QHBoxLayout" name="horizontalLayout_4">
+               <item>
+                <widget class="QRadioButton" name="radioButton_applicable">
+                 <property name="text">
+                  <string>Годен</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QRadioButton" name="radioButton_inapplicable">
+                 <property name="text">
+                  <string>Брак</string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <spacer name="horizontalSpacer_10">
+                 <property name="orientation">
+                  <enum>Qt::Horizontal</enum>
+                 </property>
+                 <property name="sizeHint" stdset="0">
+                  <size>
+                   <width>40</width>
+                   <height>20</height>
+                  </size>
+                 </property>
+                </spacer>
                </item>
               </layout>
              </widget>
@@ -2332,7 +2415,7 @@
         <bool>true</bool>
        </attribute>
        <attribute name="verticalHeaderVisible">
-        <bool>false</bool>
+        <bool>true</bool>
        </attribute>
       </widget>
      </item>
