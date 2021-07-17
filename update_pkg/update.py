@@ -101,7 +101,7 @@ class UpdateThread(QThread):
                         return
                     query = f"INSERT IGNORE INTO complete_jobs2021_2 VALUES " \
                             f"('{title}', " \
-                            f"'{modification}', " \
+                            f"\"{modification}\", " \
                             f"'{miOwner}', " \
                             f"'{manufactureNum}', " \
                             f"'{reestr}', " \
@@ -111,6 +111,7 @@ class UpdateThread(QThread):
                             f"'{result}', " \
                             f"'{validDate}', " \
                             f"'')"
+                    # print(query)
                     cursor = connection.cursor()
                     cursor.execute(query)
                     connection.commit()
@@ -141,7 +142,6 @@ class Update(QMainWindow, Ui_MainWindow):
     def __init__(self):
         super(Update, self).__init__()
 
-        print(ord("»"))
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
 
