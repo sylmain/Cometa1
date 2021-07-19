@@ -352,6 +352,45 @@ def get_mietas():
     return {'mietas_dict': mietas_dict, 'reserve': 'reserve'}
 
 
+def get_mis_vri_info():
+    mis_vri_dict = dict()
+    sql_select = "SELECT * FROM mis_vri_info ORDER BY vri_mi_id"
+    MySQLConnection.verify_connection()
+    connection = MySQLConnection.create_connection()
+    result = MySQLConnection.execute_read_query(connection, sql_select)
+    connection.close()
+    for vri_info in result:
+        temp_dict = {'organization': vri_info[2],
+                     'signCipher': vri_info[3],
+                     'miOwner': vri_info[4],
+                     'vrfDate': vri_info[5],
+                     'validDate': vri_info[6],
+                     'vriType': vri_info[7],
+                     'docTitle': vri_info[8],
+                     'applicable': str(vri_info[9]),
+                     'certNum': vri_info[10],
+                     'stickerNum': vri_info[11],
+                     'signPass': str(vri_info[12]),
+                     'signMi': str(vri_info[13]),
+                     'inapplicable_reason': vri_info[14],
+                     'structure': vri_info[15],
+                     'briefIndicator': str(vri_info[16]),
+                     'briefCharacteristics': vri_info[17],
+                     'ranges': vri_info[18],
+                     'values': vri_info[19],
+                     'channels': vri_info[20],
+                     'blocks': vri_info[21],
+                     'additional_info': vri_info[22],
+                     'info': vri_info[23]}
+        if str(vri_info[1]) not in mis_vri_dict:
+            mis_vri_dict[str(vri_info[1])] = dict()
+            mis_vri_dict[str(vri_info[1])][str(vri_info[0])] = temp_dict
+        else:
+            mis_vri_dict[str(vri_info[1])][str(vri_info[0])] = temp_dict
+
+    return {'mis_vri_dict': mis_vri_dict, 'reserve': 'reserve'}
+
+
 def get_organization_name():
     MySQLConnection.verify_connection()
     connection = MySQLConnection.create_connection()

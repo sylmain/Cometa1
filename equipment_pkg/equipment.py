@@ -59,7 +59,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.mieta_search = dict()
         self.mieta = dict()
 
-        self.vri_info_dict = dict()
+        self.temp_vri_dict = dict()
 
         self.measure_codes_dict = func.get_measure_codes()['measure_codes_dict']
         # self.mis_dict = func.get_mis()['mis_dict']
@@ -70,8 +70,9 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.room_deps = func.get_room_deps()
         self.mi_deps = func.get_mi_deps()
         self.dep_list = func.get_departments()['dep_name_list']
+        self.mis_vri_dict = dict()
 
-        self.tbl_verif_model = QStandardItemModel(0, 6, parent=self)
+        self.tbl_verif_model = QStandardItemModel(0, 7, parent=self)
         self.tbl_equip_model = QStandardItemModel(0, 5, parent=self)
         self.lv_dep_model = QStringListModel(parent=self)
         self.cb_worker_model = QStringListModel(parent=self)
@@ -113,6 +114,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.comboBox_status.currentTextChanged.connect(self._on_status_changed)
         self.ui.radioButton_applicable.toggled.connect(self._on_applicable_toggle)
 
+    # -------------------------------------ВИДИМОСТЬ БРАК/ГОДЕН ПРИ ПЕРЕКЛЮЧЕНИИ----------------------------------------
+
     def _on_applicable_toggle(self, choisen):
         if choisen:
             self.ui.groupBox_applicable.show()
@@ -142,9 +145,6 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
     def _on_delete_mi(self):
         mi_id = self.ui.lineEdit_equip_id.text()
         if mi_id:
-            sql_delete_1 = f"DELETE FROM mis WHERE mi_id = {int(mi_id)}"
-            sql_delete_2 = f"DELETE FROM mis_departments WHERE MD_mi_id = {int(mi_id)}"
-
             dialog = QMessageBox(self)
             dialog.setWindowTitle("Подтверждение удаления")
             dialog.setText(f"Вы действительно хотите удалить оборудование?\n"
@@ -158,9 +158,12 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             dialog.setEscapeButton(btn_no)
             result = dialog.exec()
             if result == 0:
+                sql_delete_1 = f"DELETE FROM mis WHERE mi_id = {int(mi_id)}"
+                sql_delete_2 = f"DELETE FROM mis_departments WHERE MD_mi_id = {int(mi_id)}"
+                sql_delete_3 = f"DELETE FROM mis_vri_info WHERE vri_mi_id = {int(mi_id)}"
                 MySQLConnection.verify_connection()
                 connection = MySQLConnection.create_connection()
-                MySQLConnection.execute_transaction_query(connection, sql_delete_1, sql_delete_2)
+                MySQLConnection.execute_transaction_query(connection, sql_delete_1, sql_delete_2, sql_delete_3)
                 connection.close()
 
                 self._update_equip_table()
@@ -295,6 +298,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self._update_owner_info()
 
         self._update_verification_table()
+        if self.tbl_verif_model.rowCount() > 0:
+            self._update_vri_info(self.tbl_verif_model.item(0, 2).index())
 
     # --------------------------------ОБНОВЛЕНИЕ ПОЛЕЙ ОТДЕЛА, СОТРУДНИКОВ И КОМНАТ------------------------------------
 
@@ -348,7 +353,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             if self.resp_json:
                 if self.get_type == "mieta_vri":
                     self.vri = self.resp_json
-                    self._fill_vri_info()
+                    self._get_vri_info()
                 elif "mit" in self.search_thread.url:
                     self._get_mit()
                 elif "vri" in self.search_thread.url:
@@ -487,7 +492,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             elif self.eq_type == "vri" or self.eq_type == "mieta" or self.eq_type == "vri_id":
                 self._fill_vri()
                 self._fill_mit()
-                self._fill_vri_info()
+                self._get_vri_info()
             # self._stop_search()
 
     # -----------------------------ПОЛУЧАЕМ ИНФОРМАЦИЮ ПО VRI----------------------------------------------------------
@@ -570,7 +575,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                             self.search_thread.start()
                         else:
                             self._fill_vri()
-                            self._fill_vri_info()
+                            self._get_vri_info()
                     elif 'partyMI' in self.vri['result']['miInfo']:
                         miInfo = self.vri['result']['miInfo']['partyMI']
 
@@ -633,7 +638,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                     self.search_thread.start()
                 else:
                     self._fill_vri()
-                    self._fill_vri_info()
+                    self._get_vri_info()
 
             elif self.eq_type == "mieta":
                 self._update_progressbar(50, "Поиск информации о результатах поверки СИ")
@@ -724,7 +729,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                             self.ui.radioButton_MPI_yes.setChecked(True)
                         self._stop_search()
 
-    def _fill_vri_info(self):
+    def _get_vri_info(self):
 
         self.get_type = "mieta_vri"
 
@@ -823,7 +828,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                     additional_info = info['additional_info']
 
             if cert_num:
-                self.vri_info_dict[cert_num] = {'organization': organization,
+                self.temp_vri_dict[cert_num] = {'organization': organization,
                                                 'signCipher': signCipher,
                                                 'miOwner': miOwner,
                                                 'vrfDate': vrfDate,
@@ -831,9 +836,11 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                                                 'vriType': vriType,
                                                 'docTitle': docTitle,
                                                 'applicable': applicable,
+                                                'certNum': cert_num,
                                                 'stickerNum': stickerNum,
                                                 'signPass': signPass,
                                                 'signMi': signMi,
+                                                'inapplicable_reason': "",
                                                 'structure': structure,
                                                 'briefIndicator': briefIndicator,
                                                 'briefCharacteristics': briefCharacteristics,
@@ -841,7 +848,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                                                 'values': values,
                                                 'channels': channels,
                                                 'blocks': blocks,
-                                                'additional_info': additional_info}
+                                                'additional_info': additional_info,
+                                                'info': ""}
             self._update_vri_info(self.tbl_verif_model.item(0, 2).index())
 
             # ЕСЛИ ИЩЕМ ПО НОМЕРУ ЭТАЛОНА, ТО УДАЛЯЕМ ПЕРВУЮ ПОВЕРКУ И ИЩЕМ СЛЕДУЮЩУЮ
@@ -872,34 +880,45 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
     # -------------------ОБНОВЛЕНИЕ ИНФОРМАЦИИ ПОЛЕЙ ПРИ ВЫБОРЕ ПОВЕРКИ В ТАБЛИЦЕ ПОВЕРОК------------------------------
 
     def _update_vri_info(self, index):
+        mi_id = self.ui.lineEdit_equip_id.text()
         row = self.tbl_verif_model.itemFromIndex(index).row()
         cert_num = self.tbl_verif_model.index(row, 2).data()
-        if cert_num in self.vri_info_dict:
-            self.ui.plainTextEdit_vri_organization.setPlainText(self.vri_info_dict[cert_num]['organization'])
-            self.ui.plainTextEdit_vri_miOwner.setPlainText(self.vri_info_dict[cert_num]['miOwner'])
-            self.ui.lineEdit_vrfDate.setText(self.vri_info_dict[cert_num]['vrfDate'])
-            self.ui.lineEdit_vri_validDate.setText(self.vri_info_dict[cert_num]['validDate'])
-            self.ui.lineEdit_vri_vriType.setText(self.vri_info_dict[cert_num]['vriType'])
-            self.ui.plainTextEdit_vri_docTitle.setPlainText(self.vri_info_dict[cert_num]['docTitle'])
-            if self.vri_info_dict[cert_num]['applicable'] == 1:
-                self.ui.radioButton_applicable.setChecked(True)
-                self.ui.lineEdit_vri_certNum.setText(cert_num)
-                self.ui.lineEdit_vri_signCipher.setText(self.vri_info_dict[cert_num]['signCipher'])
-                self.ui.lineEdit_vri_stickerNum.setText(self.vri_info_dict[cert_num]['stickerNum'])
-                self.ui.checkBox_vri_signPass.setChecked(self.vri_info_dict[cert_num]['signPass'])
-                self.ui.checkBox_vri_signMi.setChecked(self.vri_info_dict[cert_num]['signMi'])
-            else:
-                self.ui.radioButton_inapplicable.setChecked(True)
-                self.ui.lineEdit_vri_noticeNum.setText(cert_num)
-            self.ui.plainTextEdit_vri_structure.setPlainText(self.vri_info_dict[cert_num]['structure'])
-            self.ui.checkBox_vri_briefIndicator.setChecked(self.vri_info_dict[cert_num]['briefIndicator'])
-            self.ui.plainTextEdit_vri_briefCharacteristics.setPlainText(
-                self.vri_info_dict[cert_num]['briefCharacteristics'])
-            self.ui.plainTextEdit_vri_ranges.setPlainText(self.vri_info_dict[cert_num]['ranges'])
-            self.ui.plainTextEdit_vri_values.setPlainText(self.vri_info_dict[cert_num]['values'])
-            self.ui.plainTextEdit_vri_channels.setPlainText(self.vri_info_dict[cert_num]['channels'])
-            self.ui.plainTextEdit_vri_blocks.setPlainText(self.vri_info_dict[cert_num]['blocks'])
-            self.ui.plainTextEdit_vri_additional_info.setPlainText(self.vri_info_dict[cert_num]['additional_info'])
+        vri_id = self.tbl_verif_model.index(row, 6).data()
+
+        if self.temp_vri_dict and cert_num in self.temp_vri_dict:
+            self._fill_vri_info(self.temp_vri_dict[cert_num])
+
+        elif vri_id and mi_id:
+            self.ui.lineEdit_vri_id.setText(vri_id)
+            vri_dict = self.mis_vri_dict[mi_id][vri_id]
+            self._fill_vri_info(vri_dict)
+
+    def _fill_vri_info(self, vri_dict):
+        self.ui.plainTextEdit_vri_organization.setPlainText(vri_dict['organization'])
+        self.ui.lineEdit_vri_signCipher.setText(vri_dict['signCipher'])
+        self.ui.plainTextEdit_vri_miOwner.setPlainText(vri_dict['miOwner'])
+        self.ui.lineEdit_vrfDate.setText(vri_dict['vrfDate'])
+        self.ui.lineEdit_vri_validDate.setText(vri_dict['validDate'])
+        self.ui.lineEdit_vri_vriType.setText(vri_dict['vriType'])
+        self.ui.plainTextEdit_vri_docTitle.setPlainText(vri_dict['docTitle'])
+        if int(vri_dict['applicable']):
+            self.ui.radioButton_applicable.setChecked(True)
+            self.ui.lineEdit_vri_certNum.setText(vri_dict['certNum'])
+            self.ui.lineEdit_vri_stickerNum.setText(vri_dict['stickerNum'])
+            self.ui.checkBox_vri_signPass.setChecked(int(vri_dict['signPass']))
+            self.ui.checkBox_vri_signMi.setChecked(int(vri_dict['signMi']))
+        else:
+            self.ui.radioButton_inapplicable.setChecked(True)
+            self.ui.lineEdit_vri_noticeNum.setText(vri_dict['certNum'])
+        self.ui.plainTextEdit_vri_structure.setPlainText(vri_dict['structure'])
+        self.ui.checkBox_vri_briefIndicator.setChecked(int(vri_dict['briefIndicator']))
+        self.ui.plainTextEdit_vri_briefCharacteristics.setPlainText(
+            vri_dict['briefCharacteristics'])
+        self.ui.plainTextEdit_vri_ranges.setPlainText(vri_dict['ranges'])
+        self.ui.plainTextEdit_vri_values.setPlainText(vri_dict['values'])
+        self.ui.plainTextEdit_vri_channels.setPlainText(vri_dict['channels'])
+        self.ui.plainTextEdit_vri_blocks.setPlainText(vri_dict['blocks'])
+        self.ui.plainTextEdit_vri_additional_info.setPlainText(vri_dict['additional_info'])
 
     # --------------------------------НАЖАТИЕ КНОПКИ "ПРЕРВАТЬ ПОИСК"--------------------------------------------------
 
@@ -958,7 +977,10 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.checkBox_has_pasport.setChecked(False)
 
         # ---------------------------------ОЧИСТКА ИНФОРМАЦИИ О ПОВЕРКАХ------------------------------------------------
+        self.temp_vri_dict.clear()
+        self.mis_vri_dict.clear()
         self.tbl_verif_model.clear()
+        self.ui.lineEdit_vri_id.setText("")
         self.ui.plainTextEdit_vri_organization.setPlainText("")
         self.ui.plainTextEdit_vri_miOwner.setPlainText("")
         self.ui.lineEdit_vrfDate.setText("")
@@ -1017,15 +1039,45 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self._clear_all()
 
     def _update_verification_table(self):
-        # self.tbl_verif_model.clear()
+        self.mis_vri_dict = func.get_mis_vri_info()['mis_vri_dict']
+        print(self.mis_vri_dict)
+        mi_id = self.ui.lineEdit_equip_id.text()
+        if mi_id and mi_id in self.mis_vri_dict:
+            self.tbl_verif_model.clear()
+            for vri_id in self.mis_vri_dict[mi_id]:
+                row = list()
+                row.append(QStandardItem(self.mis_vri_dict[mi_id][vri_id]['vrfDate']))
+                if self.mis_vri_dict[mi_id][vri_id]['applicable'] == "1":
+                    if self.mis_vri_dict[mi_id][vri_id]['validDate']:
+                        row.append(QStandardItem(self.mis_vri_dict[mi_id][vri_id]['validDate']))
+                    else:
+                        row.append(QStandardItem("Бессрочно"))
+                    row.append(QStandardItem(self.mis_vri_dict[mi_id][vri_id]['certNum']))
+                    row.append(QStandardItem("ГОДЕН"))
+                else:
+                    row.append(QStandardItem("-"))
+                    row.append(QStandardItem(self.mis_vri_dict[mi_id][vri_id]['certNum']))
+                    row.append(QStandardItem("БРАК"))
+
+                row.append(QStandardItem(self.mis_vri_dict[mi_id][vri_id]['organization']))
+                row.append(QStandardItem(""))
+                row.append(QStandardItem(vri_id))
+
+                # if self.mieta and 'result' in self.mieta:
+                #     result = self.mieta['result']
+                #     if 'rankclass' in result and 'schematitle' in result and 'schematype' in result:
+                #         row.append(QStandardItem(f"{result['rankclass']}\n{result['schematype']}: {result['schematitle']}"))
+                self.tbl_verif_model.appendRow(row)
+
         self.tbl_verif_model.setHorizontalHeaderLabels(
-            ["Дата поверки", "Годен до", "Номер свидетельства", "Результат", "Организация-поверитель", "Эталон"])
+            ["Дата поверки", "Годен до", "Номер свидетельства", "Результат", "Организация-поверитель", "Эталон", "id"])
         self.ui.tableView_verification_info.setColumnWidth(0, 85)
         self.ui.tableView_verification_info.setColumnWidth(1, 65)
-        self.ui.tableView_verification_info.setColumnWidth(2, 140)
+        self.ui.tableView_verification_info.setColumnWidth(2, 180)
         self.ui.tableView_verification_info.setColumnWidth(3, 70)
         self.ui.tableView_verification_info.setColumnWidth(4, 210)
         self.ui.tableView_verification_info.setColumnWidth(5, 280)
+        self.ui.tableView_verification_info.setColumnWidth(6, 0)
         self.ui.tableView_verification_info.resizeRowsToContents()
 
     # ----------------------------------------НАЖАТИЕ КНОПКИ СОХРАНИТЬ-------------------------------------------------
@@ -1123,6 +1175,9 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                       f"'{self.ui.lineEdit_mieta_schematype.text()}', " \
                       f"'{self.ui.plainTextEdit_mieta_schematitle.toPlainText()}', " \
                       f"'{self.ui.lineEdit_mieta_rank_title.text()}');"
+        MySQLConnection.execute_query(connection, sql_replace)
+
+        # if self.vri_info_dict
 
         vri_id = self.ui.lineEdit_vri_id.text()
         if not vri_id:
@@ -1153,7 +1208,6 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                         f"'{self.ui.plainTextEdit_vri_blocks.toPlainText()}', " \
                         f"'{self.ui.plainTextEdit_vri_additional_info.toPlainText()}', " \
                         f"'');"
-        MySQLConnection.execute_query(connection, sql_replace)
         MySQLConnection.execute_query(connection, sql_replace_1)
 
         old_deps = set()
@@ -1194,6 +1248,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
     def _on_add_equip_arshin(self):
         self._clear_all()
+        self.ui.tableView_equip_list.selectionModel().clearSelection()
 
         dialog = QInputDialog(self)
         dialog.setInputMode(QInputDialog.TextInput)
@@ -1215,7 +1270,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             self.dialog = QProgressDialog(self)
             self.dialog.setAutoClose(False)
             self.dialog.setAutoReset(False)
-            self.dialog.setWindowTitle("Поиск информации в ФГИС \"Аршин\"")
+            self.dialog.setWindowTitle("ОЖИДАЙТЕ! Идет поиск!")
             self.dialog.setCancelButtonText("Прервать")
             self.dialog.canceled.connect(self._on_search_stopped)
             self.dialog.setRange(0, 100)
