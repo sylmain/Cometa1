@@ -341,13 +341,14 @@ def get_mietas():
     result = MySQLConnection.execute_read_query(connection, sql_select)
     connection.close()
     for mieta in result:
-        mietas_dict[str(mieta[0])] = {'mi_id': str(mieta[1]),
-                                      'number': mieta[2],
-                                      'rankcode': mieta[3],
-                                      'npenumber': mieta[4],
-                                      'schematype': mieta[5],
-                                      'schematitle': mieta[6],
-                                      'rankclass': mieta[7]}
+        mietas_dict[str(mieta[2])] = {'mieta_id': str(mieta[0]),
+                                      'mi_id': str(mieta[1]),
+                                      'number': mieta[3],
+                                      'rankcode': mieta[4],
+                                      'npenumber': mieta[5],
+                                      'schematype': mieta[6],
+                                      'schematitle': mieta[7],
+                                      'rankclass': mieta[8]}
 
     return {'mietas_dict': mietas_dict, 'reserve': 'reserve'}
 

@@ -612,7 +612,7 @@ class WorkersWidget(QWidget):
                 menu.addSeparator()
                 menu.addMenu(inner_menu_1)
                 menu.addMenu(inner_menu_2)
-                if worker_id in self.worker_deps_dict[worker_id] and len(self.worker_deps_dict[worker_id]) > 1:
+                if worker_id in self.worker_deps_dict and len(self.worker_deps_dict[worker_id]) > 1:
                     menu.addAction(action_remove_from_dep)
                 menu.addSeparator()
                 menu.addAction(action_transfer_to_reserve)

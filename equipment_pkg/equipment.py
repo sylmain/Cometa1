@@ -70,16 +70,17 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.room_deps = func.get_room_deps()
         self.mi_deps = func.get_mi_deps()
         self.dep_list = func.get_departments()['dep_name_list']
+        self.mietas_dict = func.get_mietas()['mietas_dict']
         self.mis_vri_dict = dict()
 
-        self.tbl_verif_model = QStandardItemModel(0, 7, parent=self)
-        self.tbl_equip_model = QStandardItemModel(0, 5, parent=self)
+        self.tbl_vri_model = QStandardItemModel(0, 7, parent=self)
+        self.tbl_mi_model = QStandardItemModel(0, 5, parent=self)
         self.lv_dep_model = QStringListModel(parent=self)
         self.cb_worker_model = QStringListModel(parent=self)
         self.cb_room_model = QStringListModel(parent=self)
 
-        self.ui.tableView_equip_list.setModel(self.tbl_equip_model)
-        self.ui.tableView_verification_info.setModel(self.tbl_verif_model)
+        self.ui.tableView_mi_list.setModel(self.tbl_mi_model)
+        self.ui.tableView_vri_list.setModel(self.tbl_vri_model)
         self.ui.listView_departments.setModel(self.lv_dep_model)
         self.ui.comboBox_responsiblePerson.setModel(self.cb_worker_model)
         self.ui.comboBox_room.setModel(self.cb_room_model)
@@ -103,16 +104,30 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.toolButton_equip_add.clicked.connect(self._on_add_equip_arshin)
         self.ui.pushButton_equip_save.clicked.connect(self._on_save_equip)
         self.search_thread.msg_signal.connect(self._on_getting_resp, Qt.QueuedConnection)
-        self.ui.tableView_equip_list.clicked.connect(self._update_info)
-        self.ui.tableView_equip_list.activated.connect(self._update_info)
-        self.ui.tableView_verification_info.clicked.connect(self._update_vri_info)
-        self.ui.tableView_verification_info.activated.connect(self._update_vri_info)
+        self.ui.tableView_mi_list.clicked.connect(self._update_info)
+        self.ui.tableView_mi_list.activated.connect(self._update_info)
+        self.ui.tableView_vri_list.clicked.connect(self._on_vri_select)
+        self.ui.tableView_vri_list.activated.connect(self._on_vri_select)
+        self.ui.pushButton_save_vri.clicked.connect(self._on_save_vri)
+        self.ui.pushButton_add_vri.clicked.connect(self._test)
+        self.ui.pushButton_clear_vri.clicked.connect(self._on_clear_vri)
         self.ui.pushButton_add_dep.clicked.connect(self._on_add_dep)
         self.ui.pushButton_remove_dep.clicked.connect(self._on_remove_dep)
         self.ui.pushButton_clear.clicked.connect(self._clear_all)
         self.ui.pushButton_delete_mi.clicked.connect(self._on_delete_mi)
         self.ui.comboBox_status.currentTextChanged.connect(self._on_status_changed)
         self.ui.radioButton_applicable.toggled.connect(self._on_applicable_toggle)
+        self.ui.tabWidget.currentChanged.connect(self._on_tab_changed)
+
+    def _on_tab_changed(self, tab_index):
+        if tab_index == 2:
+            self.ui.frame_vri_buttons.show()
+        else:
+            self.ui.frame_vri_buttons.hide()
+
+    def _test(self):
+        for i in range(0, self.tbl_mi_model.rowCount()):
+            print(self.tbl_mi_model.index(i, 2).data())
 
     # -------------------------------------ВИДИМОСТЬ БРАК/ГОДЕН ПРИ ПЕРЕКЛЮЧЕНИИ----------------------------------------
 
@@ -128,15 +143,13 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
     def _on_status_changed(self, new_status):
         if new_status == "СИ":
-            self.ui.groupBox_uve_info.hide()
-            self.ui.groupBox_mieta_info.hide()
-            # self.ui.tab_etalon.setDisabled(True)
+            self.ui.tabWidget.setTabEnabled(1, False)
         elif new_status == "СИ в качестве эталона":
-            # self.ui.tab_etalon.setEnabled(True)
+            self.ui.tabWidget.setTabEnabled(1, True)
             self.ui.groupBox_uve_info.hide()
             self.ui.groupBox_mieta_info.show()
         elif new_status == "Эталон единицы величины":
-            # self.ui.tab_etalon.setEnabled(True)
+            self.ui.tabWidget.setTabEnabled(1, True)
             self.ui.groupBox_mieta_info.hide()
             self.ui.groupBox_uve_info.show()
 
@@ -149,7 +162,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             dialog.setWindowTitle("Подтверждение удаления")
             dialog.setText(f"Вы действительно хотите удалить оборудование?\n"
                            f"Также удалится вся сопутствующая информация.")
-            dialog.setIcon(QMessageBox.Question)
+            dialog.setIcon(QMessageBox.Warning)
             btn_yes = QPushButton("&Да")
             btn_no = QPushButton("&Нет")
             dialog.addButton(btn_yes, QMessageBox.AcceptRole)
@@ -161,9 +174,11 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 sql_delete_1 = f"DELETE FROM mis WHERE mi_id = {int(mi_id)}"
                 sql_delete_2 = f"DELETE FROM mis_departments WHERE MD_mi_id = {int(mi_id)}"
                 sql_delete_3 = f"DELETE FROM mis_vri_info WHERE vri_mi_id = {int(mi_id)}"
+                sql_delete_4 = f"DELETE FROM mietas WHERE mieta_mi_id = {int(mi_id)}"
                 MySQLConnection.verify_connection()
                 connection = MySQLConnection.create_connection()
-                MySQLConnection.execute_transaction_query(connection, sql_delete_1, sql_delete_2, sql_delete_3)
+                MySQLConnection.execute_transaction_query(connection, sql_delete_1, sql_delete_2, sql_delete_3,
+                                                          sql_delete_4)
                 connection.close()
 
                 self._update_equip_table()
@@ -249,8 +264,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
     def _update_info(self, index):
         self._clear_all()
-        row = self.tbl_equip_model.itemFromIndex(index).row()
-        card_number = self.tbl_equip_model.index(row, 0).data()
+        row = self.tbl_mi_model.itemFromIndex(index).row()
+        card_number = self.tbl_mi_model.index(row, 0).data()
         mi_id = func.get_mis_id_from_card_number(card_number, self.mis_dict)
         self.ui.lineEdit_equip_id.setText(mi_id)
         self.ui.lineEdit_reg_card_number.setText(self.mis_dict[mi_id]['reg_card_number'])
@@ -298,8 +313,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self._update_owner_info()
 
         self._update_verification_table()
-        if self.tbl_verif_model.rowCount() > 0:
-            self._update_vri_info(self.tbl_verif_model.item(0, 2).index())
+        if self.tbl_vri_model.rowCount() > 0:
+            self._on_vri_select(self.tbl_vri_model.item(0, 2).index())
 
     # --------------------------------ОБНОВЛЕНИЕ ПОЛЕЙ ОТДЕЛА, СОТРУДНИКОВ И КОМНАТ------------------------------------
 
@@ -741,14 +756,14 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             miOwner = ""
             vrfDate = ""
             validDate = ""
-            vriType = "2"
+            vriType = "Периодическая"
             docTitle = ""
-            applicable = 1
+            applicable = "1"
             stickerNum = ""
-            signPass = 0
-            signMi = 0
+            signPass = "0"
+            signMi = "0"
             structure = ""
-            briefIndicator = 0
+            briefIndicator = "0"
             briefCharacteristics = ""
             ranges = ""
             values = ""
@@ -778,7 +793,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 result = self.mieta['result']
                 if 'rankclass' in result and 'schematitle' in result and 'schematype' in result:
                     row.append(QStandardItem(f"{result['rankclass']}\n{result['schematype']}: {result['schematitle']}"))
-            self.tbl_verif_model.appendRow(row)
+            self.tbl_vri_model.appendRow(row)
 
             if 'organization' in vriInfo:
                 organization = vriInfo['organization']
@@ -791,29 +806,29 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             if 'validDate' in vriInfo:
                 validDate = vriInfo['validDate']
             if 'vriType' in vriInfo:
-                if vriInfo['vriType'] == "2":
-                    vriType = "периодическая"
-                elif vriInfo['vriType'] == "1":
-                    vriType = "первичная"
+                if str(vriInfo['vriType']) == "2":
+                    vriType = "Периодическая"
+                elif str(vriInfo['vriType']) == "1":
+                    vriType = "Первичная"
             if 'docTitle' in vriInfo:
                 docTitle = vriInfo['docTitle']
             if 'applicable' in vriInfo:
-                applicable = 1
+                applicable = "1"
                 if 'stickerNum' in vriInfo['applicable']:
                     stickerNum = vriInfo['applicable']['stickerNum']
                 if 'signPass' in vriInfo['applicable'] and vriInfo['applicable']['signPass']:
-                    signPass = 1
+                    signPass = "1"
                 if 'signMi' in vriInfo['applicable'] and vriInfo['applicable']['signMi']:
-                    signMi = 1
+                    signMi = "1"
             if 'inapplicable' in vriInfo:
-                applicable = 0
+                applicable = "0"
 
             if 'info' in self.vri['result']:
                 info = self.vri['result']['info']
                 if 'structure' in info:
                     structure = info['structure']
                 if 'briefIndicator' in info and info['briefIndicator']:
-                    briefIndicator = 1
+                    briefIndicator = "1"
                 if 'briefCharacteristics' in info:
                     briefCharacteristics = info['briefCharacteristics']
                 if 'ranges' in info:
@@ -850,7 +865,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                                                 'blocks': blocks,
                                                 'additional_info': additional_info,
                                                 'info': ""}
-            self._update_vri_info(self.tbl_verif_model.item(0, 2).index())
+            self._on_vri_select(self.tbl_vri_model.item(0, 2).index())
 
             # ЕСЛИ ИЩЕМ ПО НОМЕРУ ЭТАЛОНА, ТО УДАЛЯЕМ ПЕРВУЮ ПОВЕРКУ И ИЩЕМ СЛЕДУЮЩУЮ
             if self.eq_type == "mieta":
@@ -866,8 +881,11 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 if len(self.vri_numbers) == 1:
                     self.vri_numbers.clear()
                 # ЕСЛИ БОЛЬШЕ ОДНОЙ ПОВЕРКИ, ТО УДАЛЯЕМ ЗАПИСАННУЮ И ИЩЕМ СЛЕДУЮЩУЮ
+                print(self.vri_numbers)
                 for vri in self.vri_numbers:
-                    if self.vri_search['result']['items'][0]['vri_id'] in vri:
+                    if self.vri_search and self.vri_search['result']['items'][0]['vri_id'] in vri:
+                        self.vri_numbers.remove(vri)
+                    elif self.number in vri:
                         self.vri_numbers.remove(vri)
                 if len(self.vri_numbers) > 0:
                     self._update_progressbar(95, "Поиск информации о поверках")
@@ -879,11 +897,13 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
     # -------------------ОБНОВЛЕНИЕ ИНФОРМАЦИИ ПОЛЕЙ ПРИ ВЫБОРЕ ПОВЕРКИ В ТАБЛИЦЕ ПОВЕРОК------------------------------
 
-    def _update_vri_info(self, index):
+    def _on_vri_select(self, index):
+
+        # self.ui.tabWidget.setCurrentIndex(2)
         mi_id = self.ui.lineEdit_equip_id.text()
-        row = self.tbl_verif_model.itemFromIndex(index).row()
-        cert_num = self.tbl_verif_model.index(row, 2).data()
-        vri_id = self.tbl_verif_model.index(row, 6).data()
+        row = self.tbl_vri_model.itemFromIndex(index).row()
+        cert_num = self.tbl_vri_model.index(row, 2).data()
+        vri_id = self.tbl_vri_model.index(row, 6).data()
 
         if self.temp_vri_dict and cert_num in self.temp_vri_dict:
             self._fill_vri_info(self.temp_vri_dict[cert_num])
@@ -892,6 +912,18 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             self.ui.lineEdit_vri_id.setText(vri_id)
             vri_dict = self.mis_vri_dict[mi_id][vri_id]
             self._fill_vri_info(vri_dict)
+            self._fill_mieta_info(vri_id)
+
+
+    def _fill_mieta_info(self, vri_id):
+        if vri_id in self.mietas_dict:
+            self.ui.lineEdit_mieta_id.setText(self.mietas_dict[vri_id]['mieta_id'])
+            self.ui.lineEdit_mieta_number.setText(self.mietas_dict[vri_id]['number'])
+            self.ui.comboBox_mieta_rank.setCurrentText(self.mietas_dict[vri_id]['rankcode'])
+            self.ui.lineEdit_mieta_rank_title.setText(self.mietas_dict[vri_id]['rankclass'])
+            self.ui.lineEdit_mieta_npenumber.setText(self.mietas_dict[vri_id]['npenumber'])
+            self.ui.lineEdit_mieta_schematype.setText(self.mietas_dict[vri_id]['schematype'])
+            self.ui.plainTextEdit_mieta_schematitle.setPlainText(self.mietas_dict[vri_id]['schematitle'])
 
     def _fill_vri_info(self, vri_dict):
         self.ui.plainTextEdit_vri_organization.setPlainText(vri_dict['organization'])
@@ -977,9 +1009,21 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.checkBox_has_pasport.setChecked(False)
 
         # ---------------------------------ОЧИСТКА ИНФОРМАЦИИ О ПОВЕРКАХ------------------------------------------------
-        self.temp_vri_dict.clear()
         self.mis_vri_dict.clear()
-        self.tbl_verif_model.clear()
+        self.tbl_vri_model.clear()
+        self._on_clear_vri()
+
+        # ---------------------------------ОЧИСТКА ИНФОРМАЦИИ ОБ ЭТАЛОНАХ----------------------------------------------
+        self.ui.lineEdit_mieta_number.setText("")
+        self.ui.comboBox_mieta_rank.setCurrentIndex(0)
+        self.ui.lineEdit_mieta_rank_title.setText("")
+        self.ui.lineEdit_mieta_npenumber.setText("")
+        self.ui.lineEdit_mieta_schematype.setText("")
+        self.ui.plainTextEdit_mieta_schematitle.setPlainText("")
+
+    # ---------------------------------ОЧИСТКА ИНФОРМАЦИИ О ПОВЕРКАХ------------------------------------------------
+    def _on_clear_vri(self):
+        self.temp_vri_dict.clear()
         self.ui.lineEdit_vri_id.setText("")
         self.ui.plainTextEdit_vri_organization.setPlainText("")
         self.ui.plainTextEdit_vri_miOwner.setPlainText("")
@@ -987,8 +1031,6 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.lineEdit_vri_validDate.setText("")
         self.ui.lineEdit_vri_vriType.setText("")
         self.ui.plainTextEdit_vri_docTitle.setPlainText("")
-        # self.ui.groupBox_inapplicable.show()
-        # self.ui.groupBox_applicable.show()
         self.ui.radioButton_applicable.setChecked(True)
         self.ui.lineEdit_vri_certNum.setText("")
         self.ui.lineEdit_vri_signCipher.setText("")
@@ -1005,27 +1047,19 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.plainTextEdit_vri_blocks.setPlainText("")
         self.ui.plainTextEdit_vri_additional_info.setPlainText("")
 
-        # ---------------------------------ОЧИСТКА ИНФОРМАЦИИ ОБ ЭТАЛОНАХ----------------------------------------------
-        self.ui.lineEdit_mieta_number.setText("")
-        self.ui.comboBox_mieta_rank.setCurrentIndex(0)
-        self.ui.lineEdit_mieta_rank_title.setText("")
-        self.ui.lineEdit_mieta_npenumber.setText("")
-        self.ui.lineEdit_mieta_schematype.setText("")
-        self.ui.plainTextEdit_mieta_schematitle.setPlainText("")
-
     # ------------------------------------ОБНОВЛЕНИЕ ТАБЛИЦЫ ОБОРУДОВАНИЯ----------------------------------------------
 
     def _update_equip_table(self):
-        self.tbl_equip_model.clear()
+        self.tbl_mi_model.clear()
         self.mis_dict = func.get_mis()['mis_dict']
 
-        self.tbl_equip_model.setHorizontalHeaderLabels(
+        self.tbl_mi_model.setHorizontalHeaderLabels(
             ["Номер карточки", "Код измерений", "Наименование", "Тип", "Заводской номер"])
-        self.ui.tableView_equip_list.setColumnWidth(0, 110)
-        self.ui.tableView_equip_list.setColumnWidth(1, 100)
-        self.ui.tableView_equip_list.setColumnWidth(2, 200)
-        self.ui.tableView_equip_list.setColumnWidth(3, 100)
-        self.ui.tableView_equip_list.setColumnWidth(4, 110)
+        self.ui.tableView_mi_list.setColumnWidth(0, 110)
+        self.ui.tableView_mi_list.setColumnWidth(1, 100)
+        self.ui.tableView_mi_list.setColumnWidth(2, 200)
+        self.ui.tableView_mi_list.setColumnWidth(3, 100)
+        self.ui.tableView_mi_list.setColumnWidth(4, 110)
         for mi_id in self.mis_dict:
             row = []
             row.append(QStandardItem(self.mis_dict[mi_id]['reg_card_number']))
@@ -1034,16 +1068,16 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             row.append(QStandardItem(self.mis_dict[mi_id]['title']))
             row.append(QStandardItem(self.mis_dict[mi_id]['modification']))
             row.append(QStandardItem(self.mis_dict[mi_id]['number']))
-            self.tbl_equip_model.appendRow(row)
-        self.ui.tableView_equip_list.resizeRowsToContents()
+            self.tbl_mi_model.appendRow(row)
+        self.ui.tableView_mi_list.resizeRowsToContents()
         self._clear_all()
 
     def _update_verification_table(self):
         self.mis_vri_dict = func.get_mis_vri_info()['mis_vri_dict']
-        print(self.mis_vri_dict)
+        # print(self.mis_vri_dict)
         mi_id = self.ui.lineEdit_equip_id.text()
         if mi_id and mi_id in self.mis_vri_dict:
-            self.tbl_verif_model.clear()
+            self.tbl_vri_model.clear()
             for vri_id in self.mis_vri_dict[mi_id]:
                 row = list()
                 row.append(QStandardItem(self.mis_vri_dict[mi_id][vri_id]['vrfDate']))
@@ -1067,18 +1101,18 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 #     result = self.mieta['result']
                 #     if 'rankclass' in result and 'schematitle' in result and 'schematype' in result:
                 #         row.append(QStandardItem(f"{result['rankclass']}\n{result['schematype']}: {result['schematitle']}"))
-                self.tbl_verif_model.appendRow(row)
+                self.tbl_vri_model.appendRow(row)
 
-        self.tbl_verif_model.setHorizontalHeaderLabels(
+        self.tbl_vri_model.setHorizontalHeaderLabels(
             ["Дата поверки", "Годен до", "Номер свидетельства", "Результат", "Организация-поверитель", "Эталон", "id"])
-        self.ui.tableView_verification_info.setColumnWidth(0, 85)
-        self.ui.tableView_verification_info.setColumnWidth(1, 65)
-        self.ui.tableView_verification_info.setColumnWidth(2, 180)
-        self.ui.tableView_verification_info.setColumnWidth(3, 70)
-        self.ui.tableView_verification_info.setColumnWidth(4, 210)
-        self.ui.tableView_verification_info.setColumnWidth(5, 280)
-        self.ui.tableView_verification_info.setColumnWidth(6, 0)
-        self.ui.tableView_verification_info.resizeRowsToContents()
+        self.ui.tableView_vri_list.setColumnWidth(0, 85)
+        self.ui.tableView_vri_list.setColumnWidth(1, 65)
+        self.ui.tableView_vri_list.setColumnWidth(2, 180)
+        self.ui.tableView_vri_list.setColumnWidth(3, 70)
+        self.ui.tableView_vri_list.setColumnWidth(4, 210)
+        self.ui.tableView_vri_list.setColumnWidth(5, 280)
+        self.ui.tableView_vri_list.setColumnWidth(6, 0)
+        self.ui.tableView_vri_list.resizeRowsToContents()
 
     # ----------------------------------------НАЖАТИЕ КНОПКИ СОХРАНИТЬ-------------------------------------------------
 
@@ -1102,23 +1136,6 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         room_id = func.get_room_id_from_number(self.ui.comboBox_room.currentText(), self.rooms['room_dict'])
 
         card_number = self.ui.lineEdit_reg_card_number.text()
-        signPass = 0
-        signMi = 0
-        briefIndicator = 0
-
-        if self.ui.radioButton_applicable.isChecked():
-            applicable = 1
-            cert_num = self.ui.lineEdit_vri_certNum.text()
-            if self.ui.checkBox_vri_signPass.isChecked():
-                signPass = 1
-            if self.ui.checkBox_vri_signMi.isChecked():
-                signMi = 1
-        else:
-            applicable = 0
-            cert_num = self.ui.lineEdit_vri_noticeNum.text()
-
-        if self.ui.checkBox_vri_briefIndicator.isChecked():
-            briefIndicator = 1
 
         sql_replace = f"REPLACE INTO mis VALUES (" \
                       f"{mi_id}, " \
@@ -1162,6 +1179,85 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             connection.close()
             return
 
+        if self.temp_vri_dict:
+            # print(self.temp_vri_dict)
+            for cert_num in self.temp_vri_dict:
+                sql_insert = f"INSERT INTO mis_vri_info VALUES (" \
+                             f"NULL, " \
+                             f"{mi_id}, " \
+                             f"'{self.temp_vri_dict[cert_num]['organization']}', " \
+                             f"'{self.temp_vri_dict[cert_num]['signCipher']}', " \
+                             f"'{self.temp_vri_dict[cert_num]['miOwner']}', " \
+                             f"'{self.temp_vri_dict[cert_num]['vrfDate']}', " \
+                             f"'{self.temp_vri_dict[cert_num]['validDate']}', " \
+                             f"'{self.temp_vri_dict[cert_num]['vriType']}', " \
+                             f"'{self.temp_vri_dict[cert_num]['docTitle']}', " \
+                             f"{int(self.temp_vri_dict[cert_num]['applicable'])}, " \
+                             f"'{self.temp_vri_dict[cert_num]['certNum']}', " \
+                             f"'{self.temp_vri_dict[cert_num]['stickerNum']}', " \
+                             f"{int(self.temp_vri_dict[cert_num]['signPass'])}, " \
+                             f"{int(self.temp_vri_dict[cert_num]['signMi'])}, " \
+                             f"'{self.temp_vri_dict[cert_num]['inapplicable_reason']}', " \
+                             f"'{self.temp_vri_dict[cert_num]['structure']}', " \
+                             f"{int(self.temp_vri_dict[cert_num]['briefIndicator'])}, " \
+                             f"'{self.temp_vri_dict[cert_num]['briefCharacteristics']}', " \
+                             f"'{self.temp_vri_dict[cert_num]['ranges']}', " \
+                             f"'{self.temp_vri_dict[cert_num]['values']}', " \
+                             f"'{self.temp_vri_dict[cert_num]['channels']}', " \
+                             f"'{self.temp_vri_dict[cert_num]['blocks']}', " \
+                             f"'{self.temp_vri_dict[cert_num]['additional_info']}', " \
+                             f"'{self.temp_vri_dict[cert_num]['info']}');"
+                MySQLConnection.execute_query(connection, sql_insert)
+        else:
+            vri_id = self.ui.lineEdit_vri_id.text()
+            if not vri_id:
+                vri_id = "NULL"
+
+            signPass = 0
+            signMi = 0
+            briefIndicator = 0
+
+            if self.ui.radioButton_applicable.isChecked():
+                applicable = 1
+                cert_num = self.ui.lineEdit_vri_certNum.text()
+                if self.ui.checkBox_vri_signPass.isChecked():
+                    signPass = 1
+                if self.ui.checkBox_vri_signMi.isChecked():
+                    signMi = 1
+            else:
+                applicable = 0
+                cert_num = self.ui.lineEdit_vri_noticeNum.text()
+
+            if self.ui.checkBox_vri_briefIndicator.isChecked():
+                briefIndicator = 1
+
+            sql_replace = f"REPLACE INTO mis_vri_info VALUES (" \
+                          f"{vri_id}, " \
+                          f"{mi_id}, " \
+                          f"'{self.ui.plainTextEdit_vri_organization.toPlainText()}', " \
+                          f"'{self.ui.lineEdit_vri_signCipher.text()}', " \
+                          f"'{self.ui.plainTextEdit_vri_miOwner.toPlainText()}', " \
+                          f"'{self.ui.lineEdit_vrfDate.text()}', " \
+                          f"'{self.ui.lineEdit_vri_validDate.text()}', " \
+                          f"'{self.ui.lineEdit_vri_vriType.text()}', " \
+                          f"'{self.ui.plainTextEdit_vri_docTitle.toPlainText()}', " \
+                          f"{applicable}, " \
+                          f"'{cert_num}', " \
+                          f"'{self.ui.lineEdit_vri_stickerNum.text()}', " \
+                          f"{signPass}, " \
+                          f"{signMi}, " \
+                          f"'{self.ui.plainTextEdit_vri_inapplicable_reason.toPlainText()}', " \
+                          f"'{self.ui.plainTextEdit_vri_structure.toPlainText()}', " \
+                          f"{briefIndicator}, " \
+                          f"'{self.ui.plainTextEdit_vri_briefCharacteristics.toPlainText()}', " \
+                          f"'{self.ui.plainTextEdit_vri_ranges.toPlainText()}', " \
+                          f"'{self.ui.plainTextEdit_vri_values.toPlainText()}', " \
+                          f"'{self.ui.plainTextEdit_vri_channels.toPlainText()}', " \
+                          f"'{self.ui.plainTextEdit_vri_blocks.toPlainText()}', " \
+                          f"'{self.ui.plainTextEdit_vri_additional_info.toPlainText()}', " \
+                          f"'');"
+            MySQLConnection.execute_query(connection, sql_replace)
+
         mieta_id = self.ui.lineEdit_mieta_id.text()
         if not mieta_id:
             mieta_id = "NULL"
@@ -1176,39 +1272,6 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                       f"'{self.ui.plainTextEdit_mieta_schematitle.toPlainText()}', " \
                       f"'{self.ui.lineEdit_mieta_rank_title.text()}');"
         MySQLConnection.execute_query(connection, sql_replace)
-
-        # if self.vri_info_dict
-
-        vri_id = self.ui.lineEdit_vri_id.text()
-        if not vri_id:
-            vri_id = "NULL"
-
-        sql_replace_1 = f"REPLACE INTO mis_vri_info VALUES (" \
-                        f"{vri_id}, " \
-                        f"{mi_id}, " \
-                        f"'{self.ui.plainTextEdit_vri_organization.toPlainText()}', " \
-                        f"'{self.ui.lineEdit_vri_signCipher.text()}', " \
-                        f"'{self.ui.plainTextEdit_vri_miOwner.toPlainText()}', " \
-                        f"'{self.ui.lineEdit_vrfDate.text()}', " \
-                        f"'{self.ui.lineEdit_vri_validDate.text()}', " \
-                        f"'{self.ui.lineEdit_vri_vriType.text()}', " \
-                        f"'{self.ui.plainTextEdit_vri_docTitle.toPlainText()}', " \
-                        f"{applicable}, " \
-                        f"'{cert_num}', " \
-                        f"'{self.ui.lineEdit_vri_stickerNum.text()}', " \
-                        f"{signPass}, " \
-                        f"{signMi}, " \
-                        f"'{self.ui.plainTextEdit_vri_inapplicable_reason.toPlainText()}', " \
-                        f"'{self.ui.plainTextEdit_vri_structure.toPlainText()}', " \
-                        f"{briefIndicator}, " \
-                        f"'{self.ui.plainTextEdit_vri_briefCharacteristics.toPlainText()}', " \
-                        f"'{self.ui.plainTextEdit_vri_ranges.toPlainText()}', " \
-                        f"'{self.ui.plainTextEdit_vri_values.toPlainText()}', " \
-                        f"'{self.ui.plainTextEdit_vri_channels.toPlainText()}', " \
-                        f"'{self.ui.plainTextEdit_vri_blocks.toPlainText()}', " \
-                        f"'{self.ui.plainTextEdit_vri_additional_info.toPlainText()}', " \
-                        f"'');"
-        MySQLConnection.execute_query(connection, sql_replace_1)
 
         old_deps = set()
         if mi_id in self.mi_deps['mi_deps_dict']:
@@ -1235,20 +1298,78 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         connection.close()
 
         self._update_equip_table()
-        self._update_info(self.tbl_equip_model.indexFromItem(self.tbl_equip_model.findItems(card_number, column=0)[0]))
+        self._update_info(self.tbl_mi_model.indexFromItem(self.tbl_mi_model.findItems(card_number, column=0)[0]))
 
-        self.ui.tableView_equip_list.setCurrentIndex(
-            self.tbl_equip_model.indexFromItem(self.tbl_equip_model.findItems(card_number, column=0)[0]))
+        self.ui.tableView_mi_list.setCurrentIndex(
+            self.tbl_mi_model.indexFromItem(self.tbl_mi_model.findItems(card_number, column=0)[0]))
 
-        self.ui.tableView_equip_list.scrollTo(self.ui.tableView_equip_list.currentIndex())
+        self.ui.tableView_mi_list.scrollTo(self.ui.tableView_mi_list.currentIndex())
 
         QMessageBox.information(self, "Сохранено", "Информация сохранена")
+
+    def _on_save_vri(self):
+
+        mi_id = self.ui.lineEdit_equip_id.text()
+        if not mi_id:
+            QMessageBox.critical(self, "Ошибка", "Сначала выполните сохранение оборудования")
+            return
+
+        vri_id = self.ui.lineEdit_vri_id.text()
+        if not vri_id:
+            vri_id = "NULL"
+
+        signPass = 0
+        signMi = 0
+        briefIndicator = 0
+
+        if self.ui.radioButton_applicable.isChecked():
+            applicable = 1
+            cert_num = self.ui.lineEdit_vri_certNum.text()
+            if self.ui.checkBox_vri_signPass.isChecked():
+                signPass = 1
+            if self.ui.checkBox_vri_signMi.isChecked():
+                signMi = 1
+        else:
+            applicable = 0
+            cert_num = self.ui.lineEdit_vri_noticeNum.text()
+
+        if self.ui.checkBox_vri_briefIndicator.isChecked():
+            briefIndicator = 1
+
+        sql_replace = f"REPLACE INTO mis_vri_info VALUES (" \
+                      f"{vri_id}, " \
+                      f"{mi_id}, " \
+                      f"'{self.ui.plainTextEdit_vri_organization.toPlainText()}', " \
+                      f"'{self.ui.lineEdit_vri_signCipher.text()}', " \
+                      f"'{self.ui.plainTextEdit_vri_miOwner.toPlainText()}', " \
+                      f"'{self.ui.lineEdit_vrfDate.text()}', " \
+                      f"'{self.ui.lineEdit_vri_validDate.text()}', " \
+                      f"'{self.ui.lineEdit_vri_vriType.text()}', " \
+                      f"'{self.ui.plainTextEdit_vri_docTitle.toPlainText()}', " \
+                      f"{applicable}, " \
+                      f"'{cert_num}', " \
+                      f"'{self.ui.lineEdit_vri_stickerNum.text()}', " \
+                      f"{signPass}, " \
+                      f"{signMi}, " \
+                      f"'{self.ui.plainTextEdit_vri_inapplicable_reason.toPlainText()}', " \
+                      f"'{self.ui.plainTextEdit_vri_structure.toPlainText()}', " \
+                      f"{briefIndicator}, " \
+                      f"'{self.ui.plainTextEdit_vri_briefCharacteristics.toPlainText()}', " \
+                      f"'{self.ui.plainTextEdit_vri_ranges.toPlainText()}', " \
+                      f"'{self.ui.plainTextEdit_vri_values.toPlainText()}', " \
+                      f"'{self.ui.plainTextEdit_vri_channels.toPlainText()}', " \
+                      f"'{self.ui.plainTextEdit_vri_blocks.toPlainText()}', " \
+                      f"'{self.ui.plainTextEdit_vri_additional_info.toPlainText()}', " \
+                      f"'');"
+        MySQLConnection.verify_connection()
+        connection = MySQLConnection.create_connection()
+        MySQLConnection.execute_query(connection, sql_replace)
 
     # -------------------НАЖАТИЕ КНОПКИ ПОИСКА ОБОРУДОВАНИЯ ИЗ АРШИНА--------------------------------------------------
 
     def _on_add_equip_arshin(self):
         self._clear_all()
-        self.ui.tableView_equip_list.selectionModel().clearSelection()
+        self.ui.tableView_mi_list.selectionModel().clearSelection()
 
         dialog = QInputDialog(self)
         dialog.setInputMode(QInputDialog.TextInput)
@@ -1292,10 +1413,9 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             self.ui.plainTextEdit_owner.setPlainText(self.org_name)
 
             if self.eq_type == "vri_id":
-                if "-" in self.number:
-                    url = f"{url_start}/vri/{self.number}"
-                else:
-                    url = f"{url_start}/vri/1-{self.number}"
+                if "-" not in self.number:
+                    self.number = f"1-{self.number}"
+                url = f"{url_start}/vri/{self.number}"
                 self.search_thread.url = url
                 self.search_thread.start()
             else:

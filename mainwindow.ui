@@ -122,7 +122,7 @@
   </action>
   <action name="action_11">
    <property name="text">
-    <string>Реестр УТ СИ</string>
+    <string>Оборудование</string>
    </property>
   </action>
   <action name="action_12">

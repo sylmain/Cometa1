@@ -118,7 +118,7 @@ class Ui_MainWindow(object):
         self.action_6.setText(_translate("MainWindow", "Климатические условия"))
         self.action_7.setText(_translate("MainWindow", "Перечень СИ"))
         self.action_8.setText(_translate("MainWindow", "График ТО"))
-        self.action_11.setText(_translate("MainWindow", "Реестр УТ СИ"))
+        self.action_11.setText(_translate("MainWindow", "Оборудование"))
         self.action_12.setText(_translate("MainWindow", "Реестр ГЭТ"))
         self.action_13.setText(_translate("MainWindow", "Реестр эталонов ЕВ"))
         self.action_14.setText(_translate("MainWindow", "Реестр УТ СО"))

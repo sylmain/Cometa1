@@ -10,6 +10,7 @@ from install_pkg.WinWizard import Wizard
 from functions_pkg.db_functions import MySQLConnection
 from ui_mainwindow import Ui_MainWindow
 from workers_pkg.workers import WorkersWidget
+from rooms_pkg.rooms import RoomsWidget
 from departments_pkg.departments import DepartmentsWidget
 from organization_pkg.organization import OrganizationWidget
 from equipment_pkg.equipment import EquipmentWidget
@@ -54,6 +55,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.ui.action_9.triggered.connect(self.open_org_info)
         self.ui.action_9.setStatusTip("Общая информация о предприятии")
 
+        self.ui.action_11.triggered.connect(self.open_equipment)
+        self.ui.action_11.setStatusTip("Используемое оборудование")
+
     def open_workers(self):
         if "workers" in self.open_subs and self.open_subs["workers"] in self.mdi.subWindowList():
             self.mdi.setActiveSubWindow(self.open_subs["workers"])
@@ -64,6 +68,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             sub.setAttribute(Qt.WA_DeleteOnClose)
             sub.show()
             self.open_subs["workers"] = sub
+
+    def open_equipment(self):
+        if "equipment" in self.open_subs and self.open_subs["equipment"] in self.mdi.subWindowList():
+            self.mdi.setActiveSubWindow(self.open_subs["equipment"])
+        else:
+            sub = QMdiSubWindow()
+            sub.setWidget(EquipmentWidget())
+            self.mdi.addSubWindow(sub)
+            sub.setAttribute(Qt.WA_DeleteOnClose)
+            sub.show()
+            self.open_subs["equipment"] = sub
 
     def open_departments(self):
         if "departments" in self.open_subs and self.open_subs["departments"] in self.mdi.subWindowList():
@@ -81,10 +96,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.mdi.setActiveSubWindow(self.open_subs["rooms"])
         else:
             sub = QMdiSubWindow()
-            sub.setWidget(EquipmentWidget())
+            sub.setWidget(RoomsWidget())
             self.mdi.addSubWindow(sub)
             sub.setAttribute(Qt.WA_DeleteOnClose)
-            sub.showMaximized()
+            sub.show()
             self.open_subs["rooms"] = sub
 
 

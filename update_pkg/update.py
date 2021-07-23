@@ -74,6 +74,9 @@ class UpdateThread(QThread):
                             modification = json_resp['result']['miInfo']['partyMI']['modification']
                             manufactureNum = json_resp['result']['miInfo']['partyMI']['quantity']
 
+                        modification = str(modification).replace("\'", "")
+                        modification = modification.replace("\"", "")
+
                         if "applicable" in json_resp['result']['vriInfo']:
                             certNum = json_resp['result']['vriInfo']['applicable']['certNum']
                             if "stickerNum" in json_resp['result']['vriInfo']['applicable']:
@@ -101,7 +104,7 @@ class UpdateThread(QThread):
                         return
                     query = f"INSERT IGNORE INTO complete_jobs2021_2 VALUES " \
                             f"('{title}', " \
-                            f"\"{modification}\", " \
+                            f"'{modification}', " \
                             f"'{miOwner}', " \
                             f"'{manufactureNum}', " \
                             f"'{reestr}', " \
