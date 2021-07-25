@@ -388,7 +388,7 @@ def get_mis_vri_info():
             mis_vri_dict[str(vri_info[1])][str(vri_info[0])] = temp_dict
         else:
             mis_vri_dict[str(vri_info[1])][str(vri_info[0])] = temp_dict
-
+    # print(mis_vri_dict)
     return {'mis_vri_dict': mis_vri_dict, 'reserve': 'reserve'}
 
 
