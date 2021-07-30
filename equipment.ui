@@ -30,7 +30,7 @@
        <property name="geometry">
         <rect>
          <x>0</x>
-         <y>0</y>
+         <y>-153</y>
          <width>687</width>
          <height>1080</height>
         </rect>
@@ -45,7 +45,7 @@
            <enum>QTabWidget::Rounded</enum>
           </property>
           <property name="currentIndex">
-           <number>1</number>
+           <number>2</number>
           </property>
           <widget class="QWidget" name="tab_mi_info">
            <attribute name="title">
@@ -1864,9 +1864,15 @@
                </item>
                <item row="0" column="1">
                 <widget class="QLineEdit" name="lineEdit_vri_certNum">
+                 <property name="minimumSize">
+                  <size>
+                   <width>160</width>
+                   <height>0</height>
+                  </size>
+                 </property>
                  <property name="maximumSize">
                   <size>
-                   <width>150</width>
+                   <width>160</width>
                    <height>16777215</height>
                   </size>
                  </property>
@@ -1945,9 +1951,15 @@
               <layout class="QGridLayout" name="gridLayout_19">
                <item row="0" column="1">
                 <widget class="QLineEdit" name="lineEdit_vri_noticeNum">
+                 <property name="minimumSize">
+                  <size>
+                   <width>160</width>
+                   <height>0</height>
+                  </size>
+                 </property>
                  <property name="maximumSize">
                   <size>
-                   <width>150</width>
+                   <width>160</width>
                    <height>16777215</height>
                   </size>
                  </property>
@@ -2209,6 +2221,12 @@
       <layout class="QHBoxLayout" name="horizontalLayout_5">
        <item>
         <widget class="QPushButton" name="pushButton_save_vri">
+         <property name="minimumSize">
+          <size>
+           <width>110</width>
+           <height>0</height>
+          </size>
+         </property>
          <property name="text">
           <string>Сохранить поверку</string>
          </property>
@@ -2235,19 +2253,6 @@
         </widget>
        </item>
        <item>
-        <spacer name="horizontalSpacer_4">
-         <property name="orientation">
-          <enum>Qt::Horizontal</enum>
-         </property>
-         <property name="sizeHint" stdset="0">
-          <size>
-           <width>40</width>
-           <height>20</height>
-          </size>
-         </property>
-        </spacer>
-       </item>
-       <item>
         <widget class="QPushButton" name="pushButton_add_vri">
          <property name="minimumSize">
           <size>
@@ -2262,6 +2267,44 @@
           <string>Добавить результаты поверки из ФГИС &quot;Аршин&quot;</string>
          </property>
         </widget>
+       </item>
+      </layout>
+     </widget>
+    </item>
+    <item>
+     <widget class="QFrame" name="frame_mieta_buttons">
+      <property name="frameShape">
+       <enum>QFrame::StyledPanel</enum>
+      </property>
+      <property name="frameShadow">
+       <enum>QFrame::Sunken</enum>
+      </property>
+      <layout class="QHBoxLayout" name="horizontalLayout_9">
+       <item>
+        <widget class="QPushButton" name="pushButton_save_mieta">
+         <property name="minimumSize">
+          <size>
+           <width>110</width>
+           <height>0</height>
+          </size>
+         </property>
+         <property name="text">
+          <string>Сохранить эталон</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <spacer name="horizontalSpacer_10">
+         <property name="orientation">
+          <enum>Qt::Horizontal</enum>
+         </property>
+         <property name="sizeHint" stdset="0">
+          <size>
+           <width>40</width>
+           <height>20</height>
+          </size>
+         </property>
+        </spacer>
        </item>
       </layout>
      </widget>

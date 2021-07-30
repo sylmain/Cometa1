@@ -290,11 +290,6 @@ def get_mis():
                                 'TO_period': mi[27],
                                 'owner': mi[28],
                                 'owner_contract': mi[29]}
-    # `mi_id`, `mis_reg_card_number`, `mi_measure_code`, `mi_status`, `mi_reestr`, `mi_title`,
-    #         `mi_modification`, `mi_number`, `mi_inv_number`, `mi_manufacturer`, `mi_manuf_year`, `mi_expl_year`,
-    #         `mi_diapazon`, `mi_PG`, `mi_KT`, `mi_other_characteristics`, `mi_MPI`, `mi_purpose`,
-    #         `mi_responsible_person`, `mi_personal`, `mi_room`, `mi_software_inner`, `mi_software_outer`, `mi_RE`,
-    #         `mi_pasport`, `mi_MP`, `mi_TO_period`)
 
     return {'mis_dict': mis_dict, 'reserve': 'reserve'}
 
