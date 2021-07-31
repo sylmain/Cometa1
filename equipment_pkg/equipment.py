@@ -1,7 +1,7 @@
 import json
 from json.decoder import JSONDecodeError
 
-from PyQt5.QtCore import QRegExp, QThread, pyqtSignal, Qt, QStringListModel, QEvent
+from PyQt5.QtCore import QRegExp, QThread, pyqtSignal, Qt, QStringListModel, QEvent, QDate, QSortFilterProxyModel
 from PyQt5.QtGui import QStandardItemModel, QStandardItem, QCloseEvent
 from PyQt5.QtWidgets import QApplication, QMainWindow, QInputDialog, QDialog, QMessageBox, QProgressDialog, \
     QAbstractItemView, QPushButton
@@ -12,6 +12,7 @@ import functions_pkg.functions as func
 
 STATUS_LIST = ["СИ", "СИ в качестве эталона", "Эталон единицы величины"]
 URL_START = "https://fgis.gost.ru/fundmetrology/eapi"
+ORG_NAME = func.get_organization_name()
 
 
 class SearchThread(QThread):
@@ -44,6 +45,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.search_thread = SearchThread()
 
         self._add_connects()
+        # self._create_dicts()
 
         # self.mis_dict = func.get_mis()['mis_dict']
         self.departments = func.get_departments()
@@ -75,8 +77,11 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.cb_worker_model = QStringListModel(parent=self)
         self.cb_room_model = QStringListModel(parent=self)
 
+        self.tbl_vri_proxy_model = CustomSortingModel()
+        self.tbl_vri_proxy_model.setSourceModel(self.tbl_vri_model)
+
         self.ui.tableView_mi_list.setModel(self.tbl_mi_model)
-        self.ui.tableView_vri_list.setModel(self.tbl_vri_model)
+        self.ui.tableView_vri_list.setModel(self.tbl_vri_proxy_model)
         self.ui.listView_departments.setModel(self.lv_dep_model)
         self.ui.comboBox_responsiblePerson.setModel(self.cb_worker_model)
         self.ui.comboBox_room.setModel(self.cb_room_model)
@@ -84,11 +89,11 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self._add_measure_codes()
         self.ui.comboBox_status.addItems(STATUS_LIST)
 
-        self.org_name = func.get_organization_name()
-
         self._clear_all()
         self._update_mi_table()
         self._update_vri_table()
+
+        self.ui.tabWidget.setCurrentIndex(0)
 
     def _add_measure_codes(self):
         self.measure_codes_dict = func.get_measure_codes()['measure_codes_dict']
@@ -140,15 +145,14 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
     # --------------------------------------ИЗМЕНЕНИЕ СТАТУСА СИ (ЭТАЛОН, СИ...)---------------------------------------
     def _on_status_changed(self, new_status):
-        if new_status == "СИ":
-            self.ui.tabWidget.setTabEnabled(1, False)
-        elif new_status == "СИ в качестве эталона":
+        self.ui.tabWidget.setTabEnabled(1, False)
+        self.ui.groupBox_mieta_info.hide()
+        self.ui.groupBox_uve_info.hide()
+        if new_status == "СИ в качестве эталона":
             self.ui.tabWidget.setTabEnabled(1, True)
-            self.ui.groupBox_uve_info.hide()
             self.ui.groupBox_mieta_info.show()
         elif new_status == "Эталон единицы величины":
             self.ui.tabWidget.setTabEnabled(1, True)
-            self.ui.groupBox_mieta_info.hide()
             self.ui.groupBox_uve_info.show()
 
     # -------------------------------------КЛИК ПО КНОПКЕ "ДОБАВИТЬ ОТДЕЛ"---------------------------------------------
@@ -228,9 +232,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
     # ----------------------ОБНОВЛЕНИЕ ПОЛЕЙ ИНФОРМАЦИИ ПРИ ПЕРЕКЛЮЧЕНИИ ОБОРУДОВАНИЯ----------------------------------
     def _update_mi_tab(self, index):
         self._clear_all()
-        row = self.tbl_mi_model.itemFromIndex(index).row()
-        card_number = self.tbl_mi_model.index(row, 0).data()
-        mi_id = func.get_mis_id_from_card_number(card_number, self.mis_dict)
+        row = index.row()
+        mi_id = self.tbl_mi_model.index(row, 5).data()
 
         self.ui.lineEdit_equip_id.setText(mi_id)
         self.ui.lineEdit_reg_card_number.setText(self.mis_dict[mi_id]['reg_card_number'])
@@ -357,9 +360,19 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                     row.append(QStandardItem("БРАК"))
 
                 row.append(QStandardItem(self.mis_vri_dict[mi_id][vri_id]['organization']))
-                row.append(QStandardItem(""))
-                row.append(QStandardItem(vri_id))
 
+                if vri_id in self.mietas_dict:
+                    rankTitle = self.mietas_dict[vri_id]['rankclass']
+                    schemaTitle = self.mietas_dict[vri_id]['schematitle']
+                    schematype = self.mietas_dict[vri_id]['schematype']
+                    regNumber = self.mietas_dict[vri_id]['number']
+                    if rankTitle and schemaTitle and regNumber and schematype:
+                        row.append(QStandardItem(f"{regNumber}: {rankTitle.lower()}\n{schematype}: {schemaTitle}"))
+                    elif rankTitle and schemaTitle and regNumber:
+                        row.append(QStandardItem(f"{regNumber}: {rankTitle.lower()}\n{schemaTitle}"))
+                else:
+                    row.append(QStandardItem("-"))
+                row.append(QStandardItem(vri_id))
                 self.tbl_vri_model.appendRow(row)
 
         self.tbl_vri_model.setHorizontalHeaderLabels(
@@ -372,6 +385,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.tableView_vri_list.setColumnWidth(5, 280)
         self.ui.tableView_vri_list.setColumnWidth(6, 0)
         self.ui.tableView_vri_list.resizeRowsToContents()
+        self.ui.tableView_vri_list.sortByColumn(0, Qt.DescendingOrder)
 
     # ---------------------------------------ОБНОВЛЕНИЕ ВКЛАДКИ О ПОВЕРКЕ----------------------------------------------
     def _update_vri_tab(self, vri_dict):
@@ -425,7 +439,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
     # -------------------ОБНОВЛЕНИЕ ИНФОРМАЦИИ ПОЛЕЙ ПРИ ВЫБОРЕ ПОВЕРКИ В ТАБЛИЦЕ ПОВЕРОК------------------------------
     def _on_vri_select(self, index):
-        row = self.tbl_vri_model.itemFromIndex(index).row()
+        row = index.row()
 
         if self.temp_vri_dict:
             cert_num = self.tbl_vri_model.index(row, 2).data()
@@ -701,8 +715,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         # MySQLConnection.execute_query(connection, sql_replace)
 
         old_deps = set()
-        if mi_id in self.mi_deps['mi_deps_dict']:
-            old_deps = set(self.mi_deps['mi_deps_dict'][mi_id])
+        if mi_id in self.mi_deps:
+            old_deps = set(self.mi_deps[mi_id])
 
         new_deps = set()
         for dep in self.lv_dep_model.stringList():
@@ -875,7 +889,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
             self.search_thread.is_running = True
 
-            self.ui.plainTextEdit_owner.setPlainText(self.org_name)
+            self.ui.plainTextEdit_owner.setPlainText(ORG_NAME)
 
             if self.eq_type == "vri_id":
                 if "-" not in self.number:
@@ -1487,6 +1501,20 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
     def _update_progressbar(self, val, text):
         self.dialog.setLabelText(text)
         self.dialog.setValue(val)
+
+
+class CustomSortingModel(QSortFilterProxyModel):
+    def lessThan(self, left, right):
+        col = left.column()
+
+        data_left = left.data()
+        data_right = right.data()
+
+        if col == 0 or col == 1:
+            data_left = QDate.fromString(data_left, "dd.MM.yyyy")
+            data_right = QDate.fromString(data_right, "dd.MM.yyyy")
+
+        return data_left < data_right
 
 
 if __name__ == "__main__":

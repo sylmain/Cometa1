@@ -30,7 +30,7 @@
        <property name="geometry">
         <rect>
          <x>0</x>
-         <y>-153</y>
+         <y>0</y>
          <width>687</width>
          <height>1080</height>
         </rect>
@@ -2341,6 +2341,9 @@
       <property name="sortingEnabled">
        <bool>true</bool>
       </property>
+      <attribute name="verticalHeaderVisible">
+       <bool>false</bool>
+      </attribute>
      </widget>
     </item>
     <item>
