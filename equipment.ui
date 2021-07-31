@@ -2223,7 +2223,7 @@
         <widget class="QPushButton" name="pushButton_save_vri">
          <property name="minimumSize">
           <size>
-           <width>110</width>
+           <width>120</width>
            <height>0</height>
           </size>
          </property>
@@ -2246,17 +2246,10 @@
         </spacer>
        </item>
        <item>
-        <widget class="QPushButton" name="pushButton_clear_vri">
-         <property name="text">
-          <string>Очистить поверку</string>
-         </property>
-        </widget>
-       </item>
-       <item>
         <widget class="QPushButton" name="pushButton_add_vri">
          <property name="minimumSize">
           <size>
-           <width>200</width>
+           <width>270</width>
            <height>0</height>
           </size>
          </property>
@@ -2265,6 +2258,19 @@
          </property>
          <property name="text">
           <string>Добавить результаты поверки из ФГИС &quot;Аршин&quot;</string>
+         </property>
+        </widget>
+       </item>
+       <item>
+        <widget class="QPushButton" name="pushButton_clear_vri">
+         <property name="minimumSize">
+          <size>
+           <width>110</width>
+           <height>0</height>
+          </size>
+         </property>
+         <property name="text">
+          <string>Очистить</string>
          </property>
         </widget>
        </item>
@@ -2284,7 +2290,7 @@
         <widget class="QPushButton" name="pushButton_save_mieta">
          <property name="minimumSize">
           <size>
-           <width>110</width>
+           <width>120</width>
            <height>0</height>
           </size>
          </property>
@@ -2305,6 +2311,19 @@
           </size>
          </property>
         </spacer>
+       </item>
+       <item>
+        <widget class="QPushButton" name="pushButton_clear_mieta">
+         <property name="minimumSize">
+          <size>
+           <width>110</width>
+           <height>0</height>
+          </size>
+         </property>
+         <property name="text">
+          <string>Очистить</string>
+         </property>
+        </widget>
        </item>
       </layout>
      </widget>
@@ -2342,29 +2361,41 @@
        <bool>true</bool>
       </property>
       <attribute name="verticalHeaderVisible">
-       <bool>false</bool>
+       <bool>true</bool>
       </attribute>
      </widget>
     </item>
     <item>
      <layout class="QHBoxLayout" name="horizontalLayout_6">
       <item>
-       <widget class="QPushButton" name="pushButton_clear">
-        <property name="maximumSize">
+       <widget class="QPushButton" name="pushButton_equip_save">
+        <property name="minimumSize">
          <size>
-          <width>100</width>
-          <height>16777215</height>
+          <width>120</width>
+          <height>0</height>
          </size>
         </property>
         <property name="text">
-         <string>Очистить</string>
+         <string>Сохранить все</string>
         </property>
        </widget>
       </item>
       <item>
-       <widget class="QPushButton" name="pushButton_equip_save">
+       <widget class="QPushButton" name="pushButton_clear">
+        <property name="minimumSize">
+         <size>
+          <width>120</width>
+          <height>0</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>120</width>
+          <height>16777215</height>
+         </size>
+        </property>
         <property name="text">
-         <string>Сохранить</string>
+         <string>Очистить все</string>
         </property>
        </widget>
       </item>

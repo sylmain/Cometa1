@@ -1,7 +1,8 @@
 import json
 from json.decoder import JSONDecodeError
 
-from PyQt5.QtCore import QRegExp, QThread, pyqtSignal, Qt, QStringListModel, QEvent, QDate, QSortFilterProxyModel
+from PyQt5.QtCore import QRegExp, QThread, pyqtSignal, Qt, QStringListModel, QEvent, QDate, QSortFilterProxyModel, \
+    QItemSelectionModel
 from PyQt5.QtGui import QStandardItemModel, QStandardItem, QCloseEvent
 from PyQt5.QtWidgets import QApplication, QMainWindow, QInputDialog, QDialog, QMessageBox, QProgressDialog, \
     QAbstractItemView, QPushButton
@@ -47,17 +48,17 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self._add_connects()
         # self._create_dicts()
 
-        # self.mis_dict = func.get_mis()['mis_dict']
         self.departments = func.get_departments()
         self.workers = func.get_workers()
         self.worker_deps = func.get_worker_deps()
         self.rooms = func.get_rooms()
         self.room_deps = func.get_room_deps()
 
-        self.mi_deps = func.get_mi_deps()['mi_deps_dict']
         self.mietas_dict = func.get_mietas()['mietas_dict']
 
         self.measure_codes_dict = dict()
+        self.mis_dict = dict()
+        self.mi_deps = dict()
         self.mis_vri_dict = dict()
         self.temp_vri_dict = dict()
 
@@ -111,6 +112,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.tableView_vri_list.clicked.connect(self._on_vri_select)
         self.ui.tableView_vri_list.activated.connect(self._on_vri_select)
         self.ui.pushButton_save_vri.clicked.connect(self._on_save_vri)
+        self.ui.pushButton_save_mieta.clicked.connect(self._on_save_mieta)
         self.ui.pushButton_add_vri.clicked.connect(self._test)
         self.ui.pushButton_clear_vri.clicked.connect(self._clear_vri_tab)
         self.ui.pushButton_add_dep.clicked.connect(self._on_add_dep)
@@ -155,166 +157,11 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             self.ui.tabWidget.setTabEnabled(1, True)
             self.ui.groupBox_uve_info.show()
 
-    # -------------------------------------КЛИК ПО КНОПКЕ "ДОБАВИТЬ ОТДЕЛ"---------------------------------------------
-    def _on_add_dep(self):
-        cur_dep_list = self.lv_dep_model.stringList()
-        full_dep_list = self.departments['dep_name_list']
-        choose_list = sorted(list(set(full_dep_list) - set(cur_dep_list)))
-        mi_id = self.ui.lineEdit_equip_id.text()
-        if choose_list:
-            dep_name, ok = QInputDialog.getItem(self, "Выбор отдела",
-                                                "Выберите отдел, который использует данное оборудование",
-                                                choose_list, current=0, editable=False)
-            if ok and dep_name:
-                cur_dep_list.append(dep_name)
-                self.lv_dep_model.setStringList(sorted(cur_dep_list))
-                dep_id = func.get_dep_id_from_name(dep_name, self.departments['dep_dict'])
-
-                # добавляем сотрудников
-                cur_worker_list = self.cb_worker_model.stringList()
-                cur_worker_list += \
-                    func.get_workers_list([dep_id], self.workers['worker_dict'], self.worker_deps['dep_workers_dict'])[
-                        'workers']
-                if "" not in cur_worker_list:
-                    cur_worker_list.insert(0, "")
-                self.cb_worker_model.setStringList(sorted(set(cur_worker_list)))
-
-                # добавляем помещения
-                cur_room_list = self.cb_room_model.stringList()
-                cur_room_list += \
-                    func.get_rooms_list([dep_id], self.rooms['room_dict'], self.room_deps['dep_rooms_dict'])['rooms']
-                if "" not in cur_room_list:
-                    cur_room_list.insert(0, "")
-                self.cb_room_model.setStringList(sorted(set(cur_room_list)))
-
-                if mi_id:
-                    self.ui.comboBox_responsiblePerson.setCurrentText(
-                        func.get_worker_fio_from_id(self.mis_dict[mi_id]['responsible_person'],
-                                                    self.workers['worker_dict']))
-                    self.ui.comboBox_room.setCurrentText(
-                        func.get_room_number_from_id(self.mis_dict[mi_id]['room'], self.rooms['room_dict']))
-        else:
-            QMessageBox.information(self, "Выбора нет", "Все подразделения включены в список")
-
-    # ----------------------------------КЛИК ПО КНОПКЕ "УДАЛИТЬ ОТДЕЛ"-------------------------------------------------
-    def _on_remove_dep(self):
-        if not self.ui.listView_departments.selectedIndexes():
-            return
-        dep_name = self.ui.listView_departments.currentIndex().data()
-        cur_dep_list = self.lv_dep_model.stringList()
-        cur_dep_list.remove(dep_name)
-        mi_id = self.ui.lineEdit_equip_id.text()
-
-        self.lv_dep_model.setStringList(cur_dep_list)
-        dep_list = list()
-
-        for dep in cur_dep_list:
-            dep_id = func.get_dep_id_from_name(dep, self.departments['dep_dict'])
-            dep_list.append(dep_id)
-
-        worker_list = func.get_workers_list(dep_list, self.workers['worker_dict'],
-                                            self.worker_deps['dep_workers_dict'])['workers']
-        room_list = func.get_rooms_list(dep_list, self.rooms['room_dict'], self.room_deps['dep_rooms_dict'])['rooms']
-        if "" not in worker_list:
-            worker_list.insert(0, "")
-        if "" not in room_list:
-            room_list.insert(0, "")
-        self.cb_worker_model.setStringList(worker_list)
-        self.cb_room_model.setStringList(room_list)
-
-        if mi_id:
-            self.ui.comboBox_responsiblePerson.setCurrentText(
-                func.get_worker_fio_from_id(self.mis_dict[mi_id]['responsible_person'],
-                                            self.workers['worker_dict']))
-            self.ui.comboBox_room.setCurrentText(
-                func.get_room_number_from_id(self.mis_dict[mi_id]['room'], self.rooms['room_dict']))
-
-    # ----------------------ОБНОВЛЕНИЕ ПОЛЕЙ ИНФОРМАЦИИ ПРИ ПЕРЕКЛЮЧЕНИИ ОБОРУДОВАНИЯ----------------------------------
-    def _update_mi_tab(self, index):
-        self._clear_all()
-        row = index.row()
-        mi_id = self.tbl_mi_model.index(row, 5).data()
-
-        self.ui.lineEdit_equip_id.setText(mi_id)
-        self.ui.lineEdit_reg_card_number.setText(self.mis_dict[mi_id]['reg_card_number'])
-        self.ui.comboBox_measure_code.setCurrentText(
-            func.get_measure_code_name_from_id(self.mis_dict[mi_id]['measure_code'], self.measure_codes_dict))
-        self.ui.comboBox_status.setCurrentText(self.mis_dict[mi_id]['status'])
-        self.ui.lineEdit_reestr.setText(self.mis_dict[mi_id]['reestr'])
-        self.ui.plainTextEdit_title.setPlainText(self.mis_dict[mi_id]['title'])
-        self.ui.plainTextEdit_type.setPlainText(self.mis_dict[mi_id]['type'])
-        self.ui.lineEdit_modification.setText(self.mis_dict[mi_id]['modification'])
-        self.ui.lineEdit_number.setText(self.mis_dict[mi_id]['number'])
-        self.ui.lineEdit_inv_number.setText(self.mis_dict[mi_id]['inv_number'])
-        self.ui.plainTextEdit_manufacturer.setPlainText(self.mis_dict[mi_id]['manufacturer'])
-        self.ui.lineEdit_manuf_year.setText(self.mis_dict[mi_id]['manuf_year'])
-        self.ui.lineEdit_expl_year.setText(self.mis_dict[mi_id]['expl_year'])
-        self.ui.lineEdit_diapazon.setText(self.mis_dict[mi_id]['diapazon'])
-        self.ui.lineEdit_PG.setText(self.mis_dict[mi_id]['PG'])
-        self.ui.lineEdit_KT.setText(self.mis_dict[mi_id]['KT'])
-        self.ui.plainTextEdit_other_characteristics.setPlainText(self.mis_dict[mi_id]['other_characteristics'])
-        self.ui.lineEdit_MPI.setText(self.mis_dict[mi_id]['MPI'])
-        self.ui.plainTextEdit_purpose.setPlainText(self.mis_dict[mi_id]['purpose'])
-        self.ui.plainTextEdit_personal.setPlainText(self.mis_dict[mi_id]['personal'])
-        self.ui.plainTextEdit_software_inner.setPlainText(self.mis_dict[mi_id]['software_inner'])
-        self.ui.plainTextEdit_software_outer.setPlainText(self.mis_dict[mi_id]['software_outer'])
-        self.ui.plainTextEdit_owner.setPlainText(self.mis_dict[mi_id]['owner'])
-        self.ui.plainTextEdit_owner_contract.setPlainText(self.mis_dict[mi_id]['owner_contract'])
-
-        if self.mis_dict[mi_id]['RE'] != "0":
-            self.ui.checkBox_has_manual.setChecked(True)
-        else:
-            self.ui.checkBox_has_manual.setChecked(False)
-        if self.mis_dict[mi_id]['pasport'] != "0":
-            self.ui.checkBox_has_pasport.setChecked(True)
-        else:
-            self.ui.checkBox_has_pasport.setChecked(False)
-        if self.mis_dict[mi_id]['MP'] != "0":
-            self.ui.checkBox_has_verif_method.setChecked(True)
-        else:
-            self.ui.checkBox_has_verif_method.setChecked(False)
-        self.ui.lineEdit_period_TO.setText(self.mis_dict[mi_id]['TO_period'])
-
-        self._update_owner_info()
-        self._update_vri_table()
-
-        if self.tbl_vri_model.rowCount() > 0:
-            self._on_vri_select(self.tbl_vri_model.item(0, 2).index())
-
-    # --------------------------------ОБНОВЛЕНИЕ ПОЛЕЙ ОТДЕЛА, СОТРУДНИКОВ И КОМНАТ------------------------------------
-    def _update_owner_info(self):
-        # self.mi_deps = func.get_mi_deps()
-        mi_id = self.ui.lineEdit_equip_id.text()
-        if mi_id:
-            dep_name_list = list()
-            if mi_id in self.mi_deps:
-                for dep_id in self.mi_deps[mi_id]:
-                    dep_name_list.append(func.get_dep_name_from_id(dep_id, self.departments['dep_dict']))
-            self.lv_dep_model.setStringList(sorted(dep_name_list))
-
-            dep_list = list()
-            for dep in dep_name_list:
-                dep_id = func.get_dep_id_from_name(dep, self.departments['dep_dict'])
-                dep_list.append(dep_id)
-            worker_list = func.get_workers_list(dep_list, self.workers['worker_dict'],
-                                                self.worker_deps['dep_workers_dict'])['workers']
-            room_list = func.get_rooms_list(dep_list, self.rooms['room_dict'], self.room_deps['dep_rooms_dict'])[
-                'rooms']
-            worker_list.insert(0, "")
-            room_list.insert(0, "")
-            self.cb_worker_model.setStringList(worker_list)
-            self.cb_room_model.setStringList(room_list)
-
-            self.ui.comboBox_responsiblePerson.setCurrentText(
-                func.get_worker_fio_from_id(self.mis_dict[mi_id]['responsible_person'], self.workers['worker_dict']))
-
-            self.ui.comboBox_room.setCurrentText(
-                func.get_room_number_from_id(self.mis_dict[mi_id]['room'], self.rooms['room_dict']))
-
     # ------------------------------------ОБНОВЛЕНИЕ ТАБЛИЦЫ ОБОРУДОВАНИЯ----------------------------------------------
     def _update_mi_table(self):
         self.tbl_mi_model.clear()
         self.mis_dict = func.get_mis()['mis_dict']
+        self.mi_deps = func.get_mi_deps()['mi_deps_dict']
 
         self.tbl_mi_model.setHorizontalHeaderLabels(
             ["Номер карточки", "Код измерений", "Наименование", "Тип", "Заводской номер", "id"])
@@ -387,6 +234,63 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.tableView_vri_list.resizeRowsToContents()
         self.ui.tableView_vri_list.sortByColumn(0, Qt.DescendingOrder)
 
+    # ---------------------------------------ОБНОВЛЕНИЕ ВКЛАДКИ ОБ ОБОРУДОВАНИИ----------------------------------------
+    def _update_mi_tab(self, index):
+        self._clear_all()
+        row = index.row()
+        mi_id = self.tbl_mi_model.index(row, 5).data()
+
+        if not mi_id or mi_id not in self.mis_dict:
+            return
+
+        self.ui.lineEdit_equip_id.setText(mi_id)
+        self.ui.lineEdit_reg_card_number.setText(self.mis_dict[mi_id]['reg_card_number'])
+        self.ui.comboBox_measure_code.setCurrentText(
+            func.get_measure_code_name_from_id(self.mis_dict[mi_id]['measure_code'], self.measure_codes_dict))
+        self.ui.comboBox_status.setCurrentText(self.mis_dict[mi_id]['status'])
+        self.ui.lineEdit_reestr.setText(self.mis_dict[mi_id]['reestr'])
+        self.ui.plainTextEdit_title.setPlainText(self.mis_dict[mi_id]['title'])
+        self.ui.plainTextEdit_type.setPlainText(self.mis_dict[mi_id]['type'])
+        self.ui.lineEdit_modification.setText(self.mis_dict[mi_id]['modification'])
+        self.ui.lineEdit_number.setText(self.mis_dict[mi_id]['number'])
+        self.ui.lineEdit_inv_number.setText(self.mis_dict[mi_id]['inv_number'])
+        self.ui.plainTextEdit_manufacturer.setPlainText(self.mis_dict[mi_id]['manufacturer'])
+        self.ui.lineEdit_manuf_year.setText(self.mis_dict[mi_id]['manuf_year'])
+        self.ui.lineEdit_expl_year.setText(self.mis_dict[mi_id]['expl_year'])
+        self.ui.lineEdit_diapazon.setText(self.mis_dict[mi_id]['diapazon'])
+        self.ui.lineEdit_PG.setText(self.mis_dict[mi_id]['PG'])
+        self.ui.lineEdit_KT.setText(self.mis_dict[mi_id]['KT'])
+        self.ui.plainTextEdit_other_characteristics.setPlainText(self.mis_dict[mi_id]['other_characteristics'])
+        self.ui.lineEdit_MPI.setText(self.mis_dict[mi_id]['MPI'])
+        self.ui.plainTextEdit_purpose.setPlainText(self.mis_dict[mi_id]['purpose'])
+        self.ui.plainTextEdit_personal.setPlainText(self.mis_dict[mi_id]['personal'])
+        self.ui.plainTextEdit_software_inner.setPlainText(self.mis_dict[mi_id]['software_inner'])
+        self.ui.plainTextEdit_software_outer.setPlainText(self.mis_dict[mi_id]['software_outer'])
+        self.ui.plainTextEdit_owner.setPlainText(self.mis_dict[mi_id]['owner'])
+        self.ui.plainTextEdit_owner_contract.setPlainText(self.mis_dict[mi_id]['owner_contract'])
+
+        if self.mis_dict[mi_id]['RE'] != "0":
+            self.ui.checkBox_has_manual.setChecked(True)
+        else:
+            self.ui.checkBox_has_manual.setChecked(False)
+        if self.mis_dict[mi_id]['pasport'] != "0":
+            self.ui.checkBox_has_pasport.setChecked(True)
+        else:
+            self.ui.checkBox_has_pasport.setChecked(False)
+        if self.mis_dict[mi_id]['MP'] != "0":
+            self.ui.checkBox_has_verif_method.setChecked(True)
+        else:
+            self.ui.checkBox_has_verif_method.setChecked(False)
+        self.ui.lineEdit_period_TO.setText(self.mis_dict[mi_id]['TO_period'])
+
+        self._update_owner_info()
+        self._update_vri_table()
+
+        if self.tbl_vri_model.rowCount() > 0:
+            self.ui.tableView_vri_list.selectionModel().setCurrentIndex(self.tbl_vri_model.item(0, 2).index(),
+                                                                        QItemSelectionModel.SelectCurrent)
+            self._on_vri_select(self.tbl_vri_model.item(0, 2).index())
+
     # ---------------------------------------ОБНОВЛЕНИЕ ВКЛАДКИ О ПОВЕРКЕ----------------------------------------------
     def _update_vri_tab(self, vri_dict):
         self.ui.plainTextEdit_vri_organization.setPlainText(vri_dict['organization'])
@@ -437,6 +341,36 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 self.ui.lineEdit_mieta_schematype.setText(self.temp_vri_dict[cert_num]['schematype'])
                 self.ui.plainTextEdit_mieta_schematitle.setPlainText(self.temp_vri_dict[cert_num]['schemaTitle'])
 
+    # --------------------------------ОБНОВЛЕНИЕ ПОЛЕЙ ОТДЕЛА, СОТРУДНИКОВ И КОМНАТ------------------------------------
+    def _update_owner_info(self):
+        # self.mi_deps = func.get_mi_deps()
+        mi_id = self.ui.lineEdit_equip_id.text()
+        if mi_id:
+            dep_name_list = list()
+            if mi_id in self.mi_deps:
+                for dep_id in self.mi_deps[mi_id]:
+                    dep_name_list.append(func.get_dep_name_from_id(dep_id, self.departments['dep_dict']))
+            self.lv_dep_model.setStringList(sorted(dep_name_list))
+
+            dep_list = list()
+            for dep in dep_name_list:
+                dep_id = func.get_dep_id_from_name(dep, self.departments['dep_dict'])
+                dep_list.append(dep_id)
+            worker_list = func.get_workers_list(dep_list, self.workers['worker_dict'],
+                                                self.worker_deps['dep_workers_dict'])['workers']
+            room_list = func.get_rooms_list(dep_list, self.rooms['room_dict'], self.room_deps['dep_rooms_dict'])[
+                'rooms']
+            worker_list.insert(0, "")
+            room_list.insert(0, "")
+            self.cb_worker_model.setStringList(worker_list)
+            self.cb_room_model.setStringList(room_list)
+
+            self.ui.comboBox_responsiblePerson.setCurrentText(
+                func.get_worker_fio_from_id(self.mis_dict[mi_id]['responsible_person'], self.workers['worker_dict']))
+
+            self.ui.comboBox_room.setCurrentText(
+                func.get_room_number_from_id(self.mis_dict[mi_id]['room'], self.rooms['room_dict']))
+
     # -------------------ОБНОВЛЕНИЕ ИНФОРМАЦИИ ПОЛЕЙ ПРИ ВЫБОРЕ ПОВЕРКИ В ТАБЛИЦЕ ПОВЕРОК------------------------------
     def _on_vri_select(self, index):
         row = index.row()
@@ -451,8 +385,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             vri_id = self.tbl_vri_model.index(row, 6).data()
             if vri_id and mi_id:
                 self.ui.lineEdit_vri_id.setText(vri_id)
-                vri_dict = self.mis_vri_dict[mi_id][vri_id]
-                self._update_vri_tab(vri_dict)
+                self._update_vri_tab(self.mis_vri_dict[mi_id][vri_id])
                 self._update_mieta_tab(row)
 
     # ------------------------------------------ОЧИСТКА ВСЕГО----------------------------------------------------------
@@ -542,6 +475,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
     # -------------------------------------------НАЖАТИЕ КНОПКИ СОХРАНИТЬ----------------------------------------------
     def _on_save_all(self):
 
+        # todo добавить удаление эталонов если оборудование переводится в разряд обычного СИ
+
         if not self.ui.lineEdit_reg_card_number.text():
             QMessageBox.warning(self, "Ошибка сохранения", "Необходимо ввести номер регистрационной карточки")
             return
@@ -601,8 +536,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             connection.close()
             return
 
+        # если сохраняем результаты поиска
         if self.temp_vri_dict:
-            # print(self.temp_vri_dict)
             for cert_num in self.temp_vri_dict:
                 sql_insert = f"INSERT INTO mis_vri_info VALUES (" \
                              f"NULL, " \
@@ -649,6 +584,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                                  f"'{self.temp_vri_dict[cert_num]['rankTitle']}');"
                     MySQLConnection.execute_query(connection, sql_insert)
 
+        # если сохраняем изменения
         else:
             vri_id = self.ui.lineEdit_vri_id.text()
             if not vri_id:
@@ -739,15 +675,16 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         connection.close()
 
         self._update_mi_table()
-        self._update_mi_tab(self.tbl_mi_model.indexFromItem(self.tbl_mi_model.findItems(card_number, column=0)[0]))
 
-        self.ui.tableView_mi_list.setCurrentIndex(
-            self.tbl_mi_model.indexFromItem(self.tbl_mi_model.findItems(card_number, column=0)[0]))
-
-        self.ui.tableView_mi_list.scrollTo(self.ui.tableView_mi_list.currentIndex())
+        row = self.tbl_mi_model.indexFromItem(self.tbl_mi_model.findItems(mi_id, column=5)[0]).row()
+        index = self.tbl_mi_model.index(row, 0)
+        self._update_mi_tab(index)
+        self.ui.tableView_mi_list.setCurrentIndex(index)
+        self.ui.tableView_mi_list.scrollTo(index)
 
         QMessageBox.information(self, "Сохранено", "Информация сохранена")
 
+    # -------------------------------------КЛИК ПО КНОПКЕ "СОХРАНИТЬ ПОВЕРКУ"----------------------------------------
     def _on_save_vri(self):
 
         mi_id = self.ui.lineEdit_equip_id.text()
@@ -779,7 +716,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
         sql_replace = f"REPLACE INTO mis_vri_info VALUES (" \
                       f"{vri_id}, " \
-                      f"{mi_id}, " \
+                      f"{int(mi_id)}, " \
                       f"'{self.ui.plainTextEdit_vri_organization.toPlainText()}', " \
                       f"'{self.ui.lineEdit_vri_signCipher.text()}', " \
                       f"'{self.ui.plainTextEdit_vri_miOwner.toPlainText()}', " \
@@ -805,10 +742,55 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         MySQLConnection.verify_connection()
         connection = MySQLConnection.create_connection()
         MySQLConnection.execute_query(connection, sql_replace)
+        connection.close()
 
-    # def _on_add_equip_arshin(self):
+    # ---------------------------------------КЛИК ПО КНОПКЕ "СОХРАНИТЬ ЭТАЛОН"-----------------------------------------
+    def _on_save_mieta(self):
+        row = self.ui.tableView_vri_list.currentIndex().row()
+        mieta_id = self.ui.lineEdit_mieta_id.text()
+        mi_id = self.ui.lineEdit_equip_id.text()
+        vri_id = self.ui.lineEdit_vri_id.text()
 
-    # -------------------------------------КЛИК ПО КНОПКЕ "УДАЛИТЬ ОБОРУДОВАНИЕ"----------------------------------------
+        if not mi_id or not vri_id:
+            QMessageBox.critical(self, "Ошибка", "Сначала выполните сохранение оборудования и (или) поверки")
+            return
+        if not mieta_id:
+            mieta_id = "NULL"
+
+        sql_replace = f"REPLACE INTO mietas VALUES (" \
+                      f"{mieta_id}, " \
+                      f"{int(mi_id)}, " \
+                      f"{int(vri_id)}, " \
+                      f"'{self.ui.lineEdit_mieta_number.text()}', " \
+                      f"'{self.ui.comboBox_mieta_rank.currentText()}', " \
+                      f"'{self.ui.lineEdit_mieta_npenumber.text()}', " \
+                      f"'{self.ui.lineEdit_mieta_schematype.text()}', " \
+                      f"'{self.ui.plainTextEdit_mieta_schematitle.toPlainText()}', " \
+                      f"'{self.ui.lineEdit_mieta_rank_title.text()}');"
+        MySQLConnection.verify_connection()
+        connection = MySQLConnection.create_connection()
+        MySQLConnection.execute_query(connection, sql_replace)
+        connection.close()
+
+        self.mietas_dict = func.get_mietas()['mietas_dict']
+        self._update_mieta_tab(row)
+
+        if vri_id in self.mietas_dict:
+            rankTitle = self.mietas_dict[vri_id]['rankclass']
+            schemaTitle = self.mietas_dict[vri_id]['schematitle']
+            schematype = self.mietas_dict[vri_id]['schematype']
+            regNumber = self.mietas_dict[vri_id]['number']
+            if rankTitle and schemaTitle and regNumber and schematype:
+                self.tbl_vri_model.setItem(row, 5, QStandardItem(
+                    f"{regNumber}: {rankTitle.lower()}\n{schematype}: {schemaTitle}"))
+            elif rankTitle and schemaTitle and regNumber:
+                self.tbl_vri_model.setItem(row, 5, QStandardItem(f"{regNumber}: {rankTitle.lower()}\n{schemaTitle}"))
+            else:
+                self.tbl_vri_model.setItem(row, 5, QStandardItem("-"))
+
+        QMessageBox.information(self, "Сохранено", "Информация сохранена")
+
+    # -------------------------------------КЛИК ПО КНОПКЕ "УДАЛИТЬ ОБОРУДОВАНИЕ"---------------------------------------
     def _on_delete_mi(self):
         mi_id = self.ui.lineEdit_equip_id.text()
         if mi_id:
@@ -838,6 +820,80 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 self._update_mi_table()
                 self._update_vri_table()
                 self._clear_all()
+
+    # -------------------------------------КЛИК ПО КНОПКЕ "ДОБАВИТЬ ОТДЕЛ"---------------------------------------------
+    def _on_add_dep(self):
+        cur_dep_list = self.lv_dep_model.stringList()
+        full_dep_list = self.departments['dep_name_list']
+        choose_list = sorted(list(set(full_dep_list) - set(cur_dep_list)))
+        mi_id = self.ui.lineEdit_equip_id.text()
+        if choose_list:
+            dep_name, ok = QInputDialog.getItem(self, "Выбор отдела",
+                                                "Выберите отдел, который использует данное оборудование",
+                                                choose_list, current=0, editable=False)
+            if ok and dep_name:
+                cur_dep_list.append(dep_name)
+                self.lv_dep_model.setStringList(sorted(cur_dep_list))
+                dep_id = func.get_dep_id_from_name(dep_name, self.departments['dep_dict'])
+
+                # добавляем сотрудников
+                cur_worker_list = self.cb_worker_model.stringList()
+                cur_worker_list += \
+                    func.get_workers_list([dep_id], self.workers['worker_dict'], self.worker_deps['dep_workers_dict'])[
+                        'workers']
+                if "" not in cur_worker_list:
+                    cur_worker_list.insert(0, "")
+                self.cb_worker_model.setStringList(sorted(set(cur_worker_list)))
+
+                # добавляем помещения
+                cur_room_list = self.cb_room_model.stringList()
+                cur_room_list += \
+                    func.get_rooms_list([dep_id], self.rooms['room_dict'], self.room_deps['dep_rooms_dict'])['rooms']
+                if "" not in cur_room_list:
+                    cur_room_list.insert(0, "")
+                self.cb_room_model.setStringList(sorted(set(cur_room_list)))
+
+                if mi_id:
+                    self.ui.comboBox_responsiblePerson.setCurrentText(
+                        func.get_worker_fio_from_id(self.mis_dict[mi_id]['responsible_person'],
+                                                    self.workers['worker_dict']))
+                    self.ui.comboBox_room.setCurrentText(
+                        func.get_room_number_from_id(self.mis_dict[mi_id]['room'], self.rooms['room_dict']))
+        else:
+            QMessageBox.information(self, "Выбора нет", "Все подразделения включены в список")
+
+    # ----------------------------------КЛИК ПО КНОПКЕ "УДАЛИТЬ ОТДЕЛ"-------------------------------------------------
+    def _on_remove_dep(self):
+        if not self.ui.listView_departments.selectedIndexes():
+            return
+        dep_name = self.ui.listView_departments.currentIndex().data()
+        cur_dep_list = self.lv_dep_model.stringList()
+        cur_dep_list.remove(dep_name)
+        mi_id = self.ui.lineEdit_equip_id.text()
+
+        self.lv_dep_model.setStringList(cur_dep_list)
+        dep_list = list()
+
+        for dep in cur_dep_list:
+            dep_id = func.get_dep_id_from_name(dep, self.departments['dep_dict'])
+            dep_list.append(dep_id)
+
+        worker_list = func.get_workers_list(dep_list, self.workers['worker_dict'],
+                                            self.worker_deps['dep_workers_dict'])['workers']
+        room_list = func.get_rooms_list(dep_list, self.rooms['room_dict'], self.room_deps['dep_rooms_dict'])['rooms']
+        if "" not in worker_list:
+            worker_list.insert(0, "")
+        if "" not in room_list:
+            room_list.insert(0, "")
+        self.cb_worker_model.setStringList(worker_list)
+        self.cb_room_model.setStringList(room_list)
+
+        if mi_id:
+            self.ui.comboBox_responsiblePerson.setCurrentText(
+                func.get_worker_fio_from_id(self.mis_dict[mi_id]['responsible_person'],
+                                            self.workers['worker_dict']))
+            self.ui.comboBox_room.setCurrentText(
+                func.get_room_number_from_id(self.mis_dict[mi_id]['room'], self.rooms['room_dict']))
 
     # -------------------НАЖАТИЕ КНОПКИ ПОИСКА ОБОРУДОВАНИЯ ИЗ АРШИНА--------------------------------------------------
     def _on_start_search(self):
