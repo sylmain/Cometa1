@@ -46,15 +46,6 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.search_thread = SearchThread()
 
         self._add_connects()
-        # self._create_dicts()
-
-        self.departments = func.get_departments()
-        self.workers = func.get_workers()
-        self.worker_deps = func.get_worker_deps()
-        self.rooms = func.get_rooms()
-        self.room_deps = func.get_room_deps()
-
-        self.mietas_dict = func.get_mietas()['mietas_dict']
 
         self.measure_codes_dict = dict()
         self.mis_dict = dict()
@@ -87,14 +78,28 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.comboBox_responsiblePerson.setModel(self.cb_worker_model)
         self.ui.comboBox_room.setModel(self.cb_room_model)
 
+        self._clear_all()
+
         self._add_measure_codes()
         self.ui.comboBox_status.addItems(STATUS_LIST)
 
-        self._clear_all()
+        self.departments = func.get_departments()
+        self.workers = func.get_workers()
+        self.worker_deps = func.get_worker_deps()
+        self.rooms = func.get_rooms()
+        self.room_deps = func.get_room_deps()
+        self._create_dicts()
+
         self._update_mi_table()
         self._update_vri_table()
 
         self.ui.tabWidget.setCurrentIndex(0)
+
+    def _create_dicts(self):
+        self.mis_dict = func.get_mis()['mis_dict']
+        self.mi_deps = func.get_mi_deps()['mi_deps_dict']
+        self.mietas_dict = func.get_mietas()['mietas_dict']
+        self.mis_vri_dict = func.get_mis_vri_info()['mis_vri_dict']
 
     def _add_measure_codes(self):
         self.measure_codes_dict = func.get_measure_codes()['measure_codes_dict']
@@ -105,16 +110,18 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
     def _add_connects(self):
         self.ui.toolButton_equip_add.clicked.connect(self._on_start_search)
-        self.search_thread.msg_signal.connect(self._on_getting_resp, Qt.QueuedConnection)
         self.ui.pushButton_equip_save.clicked.connect(self._on_save_all)
-        self.ui.tableView_mi_list.clicked.connect(self._update_mi_tab)
-        self.ui.tableView_mi_list.activated.connect(self._update_mi_tab)
+        self.search_thread.msg_signal.connect(self._on_getting_resp, Qt.QueuedConnection)
+        self.ui.tableView_mi_list.clicked.connect(self._on_mi_select)
+        self.ui.tableView_mi_list.activated.connect(self._on_mi_select)
         self.ui.tableView_vri_list.clicked.connect(self._on_vri_select)
         self.ui.tableView_vri_list.activated.connect(self._on_vri_select)
+        self.ui.pushButton_save_mi_info.clicked.connect(self._on_save_mi_info)
         self.ui.pushButton_save_vri.clicked.connect(self._on_save_vri)
         self.ui.pushButton_save_mieta.clicked.connect(self._on_save_mieta)
-        self.ui.pushButton_add_vri.clicked.connect(self._test)
+        self.ui.pushButton_add_vri.clicked.connect(self._on_add_vri)
         self.ui.pushButton_clear_vri.clicked.connect(self._clear_vri_tab)
+        self.ui.pushButton_clear_mieta.clicked.connect(self._clear_mieta_tab)
         self.ui.pushButton_add_dep.clicked.connect(self._on_add_dep)
         self.ui.pushButton_remove_dep.clicked.connect(self._on_remove_dep)
         self.ui.pushButton_clear.clicked.connect(self._clear_all)
@@ -122,15 +129,26 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.comboBox_status.currentTextChanged.connect(self._on_status_changed)
         self.ui.radioButton_applicable.toggled.connect(self._on_applicable_toggle)
         self.ui.tabWidget.currentChanged.connect(self._on_tab_changed)
+        # self.ui.lineEdit_reg_card_number.textChanged.connect(self._appearance_init)
+
+    # ---------------------------------------------ВНЕШНИЙ ВИД ПРИ СТАРТЕ----------------------------------------------
+    def _appearance_init(self):
+        if not self.ui.lineEdit_reg_card_number.text():
+            self.ui.lineEdit_reg_card_number.setStyleSheet("border: 1px solid red")
+        else:
+            self.ui.lineEdit_reg_card_number.setStyleSheet(None)
 
     # -----------------------------------ВИДИМОСТЬ КНОПОК ПРИ ПЕРЕКЛЮЧЕНИИ ВКЛАДОК-------------------------------------
     def _on_tab_changed(self, tab_index):
+        self.ui.frame_mi_info_buttons.hide()
         self.ui.frame_vri_buttons.hide()
         self.ui.frame_mieta_buttons.hide()
         if tab_index == 2:
             self.ui.frame_vri_buttons.show()
         elif tab_index == 1:
             self.ui.frame_mieta_buttons.show()
+        elif tab_index == 0:
+            self.ui.frame_mi_info_buttons.show()
 
     def _test(self):
         for i in range(0, self.tbl_mi_model.rowCount()):
@@ -147,6 +165,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
     # --------------------------------------ИЗМЕНЕНИЕ СТАТУСА СИ (ЭТАЛОН, СИ...)---------------------------------------
     def _on_status_changed(self, new_status):
+        cur_tab_index = self.ui.tabWidget.currentIndex()
         self.ui.tabWidget.setTabEnabled(1, False)
         self.ui.groupBox_mieta_info.hide()
         self.ui.groupBox_uve_info.hide()
@@ -156,12 +175,47 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         elif new_status == "Эталон единицы величины":
             self.ui.tabWidget.setTabEnabled(1, True)
             self.ui.groupBox_uve_info.show()
+        self.ui.tabWidget.setCurrentIndex(cur_tab_index)
+
+    # ----------------ОБНОВЛЕНИЕ ИНФОРМАЦИИ ПОЛЕЙ ПРИ ВЫБОРЕ ОБОРУДОВАНИЯ В ТАБЛИЦЕ ОБОРУДОВАНИЯ-----------------------
+    def _on_mi_select(self, index):
+        self._clear_all()
+        row = index.row()
+        mi_id = self.tbl_mi_model.index(row, 5).data()
+        if mi_id:
+            if mi_id in self.mis_dict:
+                self._update_mi_tab(mi_id)
+                self._update_vri_table(mi_id)
+
+        if self.tbl_vri_model.rowCount() > 0:
+            self.ui.tableView_vri_list.selectionModel().select(self.tbl_vri_model.item(0, 1).index(),
+                                                               QItemSelectionModel.SelectCurrent)
+            self._on_vri_select(self.tbl_vri_model.item(0, 1).index())
+
+    # -------------------ОБНОВЛЕНИЕ ИНФОРМАЦИИ ПОЛЕЙ ПРИ ВЫБОРЕ ПОВЕРКИ В ТАБЛИЦЕ ПОВЕРОК------------------------------
+    def _on_vri_select(self, index):
+        row = index.row()
+        vri_id = self.tbl_vri_proxy_model.index(row, 6).data()
+        self._clear_vri_tab()
+
+        if vri_id:
+            mi_id = self.ui.lineEdit_equip_id.text()
+            if mi_id:
+                self.ui.lineEdit_vri_id.setText(vri_id)
+                self._update_vri_tab(self.mis_vri_dict[mi_id][vri_id])
+                self._update_mieta_tab(vri_id)
+        else:
+            if self.temp_vri_dict:
+                cert_num = self.tbl_vri_proxy_model.index(row, 2).data()
+                if cert_num in self.temp_vri_dict:
+                    self._update_vri_tab(self.temp_vri_dict[cert_num])
+                    self._update_mieta_tab(vri_id)
+                else:
+                    self._clear_mieta_tab()
 
     # ------------------------------------ОБНОВЛЕНИЕ ТАБЛИЦЫ ОБОРУДОВАНИЯ----------------------------------------------
     def _update_mi_table(self):
         self.tbl_mi_model.clear()
-        self.mis_dict = func.get_mis()['mis_dict']
-        self.mi_deps = func.get_mi_deps()['mi_deps_dict']
 
         self.tbl_mi_model.setHorizontalHeaderLabels(
             ["Номер карточки", "Код измерений", "Наименование", "Тип", "Заводской номер", "id"])
@@ -183,12 +237,9 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             self.tbl_mi_model.appendRow(row)
         self.ui.tableView_mi_list.resizeRowsToContents()
         self.ui.tableView_mi_list.selectionModel().clearSelection()
-        self._clear_all()
 
     # -----------------------------------------ОБНОВЛЕНИЕ ТАБЛИЦЫ ПОВЕРОК----------------------------------------------
-    def _update_vri_table(self):
-        self.mis_vri_dict = func.get_mis_vri_info()['mis_vri_dict']
-        mi_id = self.ui.lineEdit_equip_id.text()
+    def _update_vri_table(self, mi_id=None):
         if mi_id and mi_id in self.mis_vri_dict:
             self.tbl_vri_model.clear()
             for vri_id in self.mis_vri_dict[mi_id]:
@@ -217,8 +268,10 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                         row.append(QStandardItem(f"{regNumber}: {rankTitle.lower()}\n{schematype}: {schemaTitle}"))
                     elif rankTitle and schemaTitle and regNumber:
                         row.append(QStandardItem(f"{regNumber}: {rankTitle.lower()}\n{schemaTitle}"))
+                    else:
+                        row.append(QStandardItem("нет данных"))
                 else:
-                    row.append(QStandardItem("-"))
+                    row.append(QStandardItem("нет"))
                 row.append(QStandardItem(vri_id))
                 self.tbl_vri_model.appendRow(row)
 
@@ -235,13 +288,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.tableView_vri_list.sortByColumn(0, Qt.DescendingOrder)
 
     # ---------------------------------------ОБНОВЛЕНИЕ ВКЛАДКИ ОБ ОБОРУДОВАНИИ----------------------------------------
-    def _update_mi_tab(self, index):
-        self._clear_all()
-        row = index.row()
-        mi_id = self.tbl_mi_model.index(row, 5).data()
-
-        if not mi_id or mi_id not in self.mis_dict:
-            return
+    def _update_mi_tab(self, mi_id):
 
         self.ui.lineEdit_equip_id.setText(mi_id)
         self.ui.lineEdit_reg_card_number.setText(self.mis_dict[mi_id]['reg_card_number'])
@@ -284,12 +331,6 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.lineEdit_period_TO.setText(self.mis_dict[mi_id]['TO_period'])
 
         self._update_owner_info()
-        self._update_vri_table()
-
-        if self.tbl_vri_model.rowCount() > 0:
-            self.ui.tableView_vri_list.selectionModel().setCurrentIndex(self.tbl_vri_model.item(0, 2).index(),
-                                                                        QItemSelectionModel.SelectCurrent)
-            self._on_vri_select(self.tbl_vri_model.item(0, 2).index())
 
     # ---------------------------------------ОБНОВЛЕНИЕ ВКЛАДКИ О ПОВЕРКЕ----------------------------------------------
     def _update_vri_tab(self, vri_dict):
@@ -320,9 +361,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.plainTextEdit_vri_additional_info.setPlainText(vri_dict['additional_info'])
 
     # ----------------------------------ОБНОВЛЕНИЕ ВКЛАДКИ ОБ ЭТАЛОНЕ--------------------------------------------------
-    def _update_mieta_tab(self, row):
+    def _update_mieta_tab(self, vri_id):
         self._clear_mieta_tab()
-        vri_id = self.tbl_vri_model.index(row, 6).data()
         if vri_id and vri_id in self.mietas_dict:
             self.ui.lineEdit_mieta_id.setText(self.mietas_dict[vri_id]['mieta_id'])
             self.ui.lineEdit_mieta_number.setText(self.mietas_dict[vri_id]['number'])
@@ -332,7 +372,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             self.ui.lineEdit_mieta_schematype.setText(self.mietas_dict[vri_id]['schematype'])
             self.ui.plainTextEdit_mieta_schematitle.setPlainText(self.mietas_dict[vri_id]['schematitle'])
         elif self.temp_vri_dict:
-            cert_num = self.tbl_vri_model.index(row, 2).data()
+            cert_num = self.ui.tableView_vri_list.currentIndex().data()
+            # print(cert_num)
             if cert_num in self.temp_vri_dict:
                 self.ui.lineEdit_mieta_number.setText(self.temp_vri_dict[cert_num]['regNumber'])
                 self.ui.comboBox_mieta_rank.setCurrentText(self.temp_vri_dict[cert_num]['rankСоdе'])
@@ -343,7 +384,6 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
     # --------------------------------ОБНОВЛЕНИЕ ПОЛЕЙ ОТДЕЛА, СОТРУДНИКОВ И КОМНАТ------------------------------------
     def _update_owner_info(self):
-        # self.mi_deps = func.get_mi_deps()
         mi_id = self.ui.lineEdit_equip_id.text()
         if mi_id:
             dep_name_list = list()
@@ -371,26 +411,10 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             self.ui.comboBox_room.setCurrentText(
                 func.get_room_number_from_id(self.mis_dict[mi_id]['room'], self.rooms['room_dict']))
 
-    # -------------------ОБНОВЛЕНИЕ ИНФОРМАЦИИ ПОЛЕЙ ПРИ ВЫБОРЕ ПОВЕРКИ В ТАБЛИЦЕ ПОВЕРОК------------------------------
-    def _on_vri_select(self, index):
-        row = index.row()
-
-        if self.temp_vri_dict:
-            cert_num = self.tbl_vri_model.index(row, 2).data()
-            if cert_num in self.temp_vri_dict:
-                self._update_vri_tab(self.temp_vri_dict[cert_num])
-                self._update_mieta_tab(row)
-        else:
-            mi_id = self.ui.lineEdit_equip_id.text()
-            vri_id = self.tbl_vri_model.index(row, 6).data()
-            if vri_id and mi_id:
-                self.ui.lineEdit_vri_id.setText(vri_id)
-                self._update_vri_tab(self.mis_vri_dict[mi_id][vri_id])
-                self._update_mieta_tab(row)
-
     # ------------------------------------------ОЧИСТКА ВСЕГО----------------------------------------------------------
     def _clear_all(self):
-        self.mis_vri_dict.clear()
+        # self.mis_vri_dict.clear()
+        self.temp_vri_dict.clear()
         self.tbl_vri_model.clear()
 
         self._clear_mi_tab()
@@ -436,6 +460,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.checkBox_has_verif_method.setChecked(False)
         self.ui.checkBox_has_pasport.setChecked(False)
 
+        # self._appearance_init()
+
     # ---------------------------------ОЧИСТКА ВКЛАДКИ ЭТАЛОНов--------------------------------------------------------
     def _clear_mieta_tab(self):
         self.ui.lineEdit_mieta_id.setText("")
@@ -448,7 +474,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
     # --------------------------------------ОЧИСТКА ВКЛАДКИ ПОВЕРОК----------------------------------------------------
     def _clear_vri_tab(self):
-        self.temp_vri_dict.clear()
+        # self.temp_vri_dict.clear()
         self.ui.lineEdit_vri_id.setText("")
         self.ui.plainTextEdit_vri_organization.setPlainText("")
         self.ui.plainTextEdit_vri_miOwner.setPlainText("")
@@ -476,6 +502,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
     def _on_save_all(self):
 
         # todo добавить удаление эталонов если оборудование переводится в разряд обычного СИ
+        # todo добавить удаление ответственного и комнаты при удалении отдела
 
         if not self.ui.lineEdit_reg_card_number.text():
             QMessageBox.warning(self, "Ошибка сохранения", "Необходимо ввести номер регистрационной карточки")
@@ -635,20 +662,103 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                           f"'');"
             MySQLConnection.execute_query(connection, sql_replace)
 
-        # mieta_id = self.ui.lineEdit_mieta_id.text()
-        # if not mieta_id:
-        #     mieta_id = "NULL"
-        #
-        # sql_replace = f"REPLACE INTO mietas VALUES (" \
-        #               f"{mieta_id}, " \
-        #               f"{mi_id}, " \
-        #               f"'{self.ui.lineEdit_mieta_number.text()}', " \
-        #               f"'{self.ui.comboBox_mieta_rank.currentText()}', " \
-        #               f"'{self.ui.lineEdit_mieta_npenumber.text()}', " \
-        #               f"'{self.ui.lineEdit_mieta_schematype.text()}', " \
-        #               f"'{self.ui.plainTextEdit_mieta_schematitle.toPlainText()}', " \
-        #               f"'{self.ui.lineEdit_mieta_rank_title.text()}');"
-        # MySQLConnection.execute_query(connection, sql_replace)
+        old_deps = set()
+        if mi_id in self.mi_deps:
+            old_deps = set(self.mi_deps[mi_id])
+
+        new_deps = set()
+        for dep in self.lv_dep_model.stringList():
+            dep_id = func.get_dep_id_from_name(dep, self.departments['dep_dict'])
+            new_deps.add(dep_id)
+
+        insert_list = new_deps - old_deps
+        if insert_list:
+            sql_insert = f"INSERT IGNORE INTO mis_departments VALUES ({mi_id}, " \
+                         f"{f'), ({mi_id}, '.join(insert_list)});"
+        else:
+            sql_insert = None
+
+        delete_list = old_deps - new_deps
+        if delete_list:
+            sql_delete = f"DELETE FROM mis_departments WHERE (MD_mi_id = {mi_id} AND MD_dep_id IN ({' ,'.join(delete_list)}));"
+        else:
+            sql_delete = None
+        MySQLConnection.execute_transaction_query(connection, sql_insert, sql_delete)
+        connection.close()
+
+        self._clear_all()
+        self._create_dicts()
+
+        self._update_mi_table()
+        self._update_mi_tab(mi_id)
+
+        row = self.tbl_mi_model.indexFromItem(self.tbl_mi_model.findItems(mi_id, column=5)[0]).row()
+        index = self.tbl_mi_model.index(row, 0)
+        self.ui.tableView_mi_list.setCurrentIndex(index)
+        self.ui.tableView_mi_list.scrollTo(index)
+
+        QMessageBox.information(self, "Сохранено", "Информация сохранена")
+
+    # ------------------------------------КЛИК ПО КНОПКЕ "СОХРАНИТЬ ИНФОРМАЦИЮ"----------------------------------------
+    def _on_save_mi_info(self):
+        if not self.ui.lineEdit_reg_card_number.text():
+            QMessageBox.warning(self, "Ошибка сохранения", "Необходимо ввести номер регистрационной карточки")
+            return
+
+        mi_id = self.ui.lineEdit_equip_id.text()
+        if not mi_id:
+            mi_id = "NULL"
+
+        measure_code_id = func.get_measure_code_id_from_name(self.ui.comboBox_measure_code.currentText(),
+                                                             self.measure_codes_dict)
+        resp_person_id = func.get_worker_id_from_fio(self.ui.comboBox_responsiblePerson.currentText(),
+                                                     self.workers['worker_dict'])
+
+        room_id = func.get_room_id_from_number(self.ui.comboBox_room.currentText(), self.rooms['room_dict'])
+
+        card_number = self.ui.lineEdit_reg_card_number.text()
+
+        sql_replace = f"REPLACE INTO mis VALUES (" \
+                      f"{mi_id}, " \
+                      f"'{self.ui.lineEdit_reg_card_number.text()}', " \
+                      f"{int(measure_code_id)}, " \
+                      f"'{self.ui.comboBox_status.currentText()}', " \
+                      f"'{self.ui.lineEdit_reestr.text()}', " \
+                      f"'{self.ui.plainTextEdit_title.toPlainText()}', " \
+                      f"'{self.ui.plainTextEdit_type.toPlainText()}', " \
+                      f"'{self.ui.lineEdit_modification.text()}', " \
+                      f"'{self.ui.lineEdit_number.text()}', " \
+                      f"'{self.ui.lineEdit_inv_number.text()}', " \
+                      f"'{self.ui.plainTextEdit_manufacturer.toPlainText()}', " \
+                      f"'{self.ui.lineEdit_manuf_year.text()}', " \
+                      f"'{self.ui.lineEdit_expl_year.text()}', " \
+                      f"'{self.ui.lineEdit_diapazon.text()}', " \
+                      f"'{self.ui.lineEdit_PG.text()}', " \
+                      f"'{self.ui.lineEdit_KT.text()}', " \
+                      f"'{self.ui.plainTextEdit_other_characteristics.toPlainText()}', " \
+                      f"'{self.ui.lineEdit_MPI.text()}', " \
+                      f"'{self.ui.plainTextEdit_purpose.toPlainText()}', " \
+                      f"{int(resp_person_id)}, " \
+                      f"'{self.ui.plainTextEdit_personal.toPlainText()}', " \
+                      f"{int(room_id)}, " \
+                      f"'{self.ui.plainTextEdit_software_inner.toPlainText()}', " \
+                      f"'{self.ui.plainTextEdit_software_outer.toPlainText()}', " \
+                      f"{int(self.ui.checkBox_has_manual.checkState())}, " \
+                      f"{int(self.ui.checkBox_has_pasport.checkState())}, " \
+                      f"{int(self.ui.checkBox_has_verif_method.checkState())}, " \
+                      f"'{self.ui.lineEdit_period_TO.text()}', " \
+                      f"'{self.ui.plainTextEdit_owner.toPlainText()}', " \
+                      f"'{self.ui.plainTextEdit_owner_contract.toPlainText()}');"
+
+        MySQLConnection.verify_connection()
+        connection = MySQLConnection.create_connection()
+        result = MySQLConnection.execute_query(connection, sql_replace)
+
+        if result[0]:
+            mi_id = str(result[1])
+        else:
+            connection.close()
+            return
 
         old_deps = set()
         if mi_id in self.mi_deps:
@@ -674,17 +784,21 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         MySQLConnection.execute_transaction_query(connection, sql_insert, sql_delete)
         connection.close()
 
+        self._clear_all()
+        self.mis_dict = func.get_mis()['mis_dict']
+        self.mi_deps = func.get_mi_deps()['mi_deps_dict']
+
         self._update_mi_table()
+        self._update_mi_tab(mi_id)
 
         row = self.tbl_mi_model.indexFromItem(self.tbl_mi_model.findItems(mi_id, column=5)[0]).row()
         index = self.tbl_mi_model.index(row, 0)
-        self._update_mi_tab(index)
         self.ui.tableView_mi_list.setCurrentIndex(index)
         self.ui.tableView_mi_list.scrollTo(index)
 
         QMessageBox.information(self, "Сохранено", "Информация сохранена")
 
-    # -------------------------------------КЛИК ПО КНОПКЕ "СОХРАНИТЬ ПОВЕРКУ"----------------------------------------
+    # -------------------------------------КЛИК ПО КНОПКЕ "СОХРАНИТЬ ПОВЕРКУ"------------------------------------------
     def _on_save_vri(self):
 
         mi_id = self.ui.lineEdit_equip_id.text()
@@ -741,15 +855,27 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                       f"'');"
         MySQLConnection.verify_connection()
         connection = MySQLConnection.create_connection()
-        MySQLConnection.execute_query(connection, sql_replace)
+        result = MySQLConnection.execute_query(connection, sql_replace)
         connection.close()
+        if result[0]:
+            vri_id = str(result[1])
+            self.mis_vri_dict = func.get_mis_vri_info()['mis_vri_dict']
+
+            if not self.ui.lineEdit_mieta_id.text() and self.ui.lineEdit_mieta_number.text():
+                self._on_save_mieta(vri_id=vri_id)
+            else:
+                self._update_vri_table(mi_id)
+
+            self._update_vri_tab(self.mis_vri_dict[mi_id][vri_id])
+        QMessageBox.information(self, "Сохранено", "Информация о поверке сохранена")
 
     # ---------------------------------------КЛИК ПО КНОПКЕ "СОХРАНИТЬ ЭТАЛОН"-----------------------------------------
-    def _on_save_mieta(self):
-        row = self.ui.tableView_vri_list.currentIndex().row()
+    def _on_save_mieta(self, mi_id="", vri_id=""):
         mieta_id = self.ui.lineEdit_mieta_id.text()
-        mi_id = self.ui.lineEdit_equip_id.text()
-        vri_id = self.ui.lineEdit_vri_id.text()
+        if not mi_id:
+            mi_id = self.ui.lineEdit_equip_id.text()
+        if not vri_id:
+            vri_id = self.ui.lineEdit_vri_id.text()
 
         if not mi_id or not vri_id:
             QMessageBox.critical(self, "Ошибка", "Сначала выполните сохранение оборудования и (или) поверки")
@@ -773,22 +899,10 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         connection.close()
 
         self.mietas_dict = func.get_mietas()['mietas_dict']
-        self._update_mieta_tab(row)
+        self._update_vri_table(mi_id)
+        self._update_mieta_tab(vri_id)
 
-        if vri_id in self.mietas_dict:
-            rankTitle = self.mietas_dict[vri_id]['rankclass']
-            schemaTitle = self.mietas_dict[vri_id]['schematitle']
-            schematype = self.mietas_dict[vri_id]['schematype']
-            regNumber = self.mietas_dict[vri_id]['number']
-            if rankTitle and schemaTitle and regNumber and schematype:
-                self.tbl_vri_model.setItem(row, 5, QStandardItem(
-                    f"{regNumber}: {rankTitle.lower()}\n{schematype}: {schemaTitle}"))
-            elif rankTitle and schemaTitle and regNumber:
-                self.tbl_vri_model.setItem(row, 5, QStandardItem(f"{regNumber}: {rankTitle.lower()}\n{schemaTitle}"))
-            else:
-                self.tbl_vri_model.setItem(row, 5, QStandardItem("-"))
-
-        QMessageBox.information(self, "Сохранено", "Информация сохранена")
+        QMessageBox.information(self, "Сохранено", "Информация об эталоне сохранена")
 
     # -------------------------------------КЛИК ПО КНОПКЕ "УДАЛИТЬ ОБОРУДОВАНИЕ"---------------------------------------
     def _on_delete_mi(self):
@@ -816,6 +930,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 MySQLConnection.execute_transaction_query(connection, sql_delete_1, sql_delete_2, sql_delete_3,
                                                           sql_delete_4)
                 connection.close()
+
+                self._create_dicts()
 
                 self._update_mi_table()
                 self._update_vri_table()
@@ -864,6 +980,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
     # ----------------------------------КЛИК ПО КНОПКЕ "УДАЛИТЬ ОТДЕЛ"-------------------------------------------------
     def _on_remove_dep(self):
+
         if not self.ui.listView_departments.selectedIndexes():
             return
         dep_name = self.ui.listView_departments.currentIndex().data()
@@ -895,6 +1012,55 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             self.ui.comboBox_room.setCurrentText(
                 func.get_room_number_from_id(self.mis_dict[mi_id]['room'], self.rooms['room_dict']))
 
+    # -------------------НАЖАТИЕ КНОПКИ ДОБАВИТЬ ПОВЕРКУ ИЗ АРШИНА-----------------------------------------------------
+    def _on_add_vri(self):
+        dialog = QInputDialog()
+        dialog.setInputMode(QInputDialog.TextInput)
+        dialog.setWindowTitle("Поиск поверки в ФГИС \"Аршин\"")
+        dialog.setLabelText("Введите один из номеров:\n"
+                            "- номер записи сведений в ФИФ (1-32165498 или 32165498);\n"
+                            "- номер свидетельства формата 2021 года (С-КС/05-05-2021/32165498);\n"
+                            "- номер в перечне СИ, применяемых в качестве эталона (36438.07.РЭ.00164658).")
+        dialog.textValueChanged.connect(lambda: self._input_verify_vri(dialog))
+        result = dialog.exec()
+        if result == QDialog.Accepted:
+            self.number = dialog.textValue().strip()
+            if self.eq_type == "" or not dialog.textValue():
+                QMessageBox.warning(self, "Предупреждение", "Введите корректный номер")
+                return
+
+            self.dialog = QProgressDialog(self)
+            self.dialog.setAutoClose(False)
+            self.dialog.setAutoReset(False)
+            self.dialog.setWindowTitle("ОЖИДАЙТЕ! Идет поиск!")
+            self.dialog.setCancelButtonText("Прервать")
+            self.dialog.canceled.connect(self._on_search_stopped)
+            self.dialog.setRange(0, 100)
+            self.dialog.setWindowModality(Qt.WindowModal)
+            self.dialog.resize(350, 100)
+            self.dialog.show()
+            if self.eq_type == "vri":
+                self._update_progressbar(0, "Поиск по номеру свидетельства")
+            elif self.eq_type == "mieta":
+                self._update_progressbar(0, "Поиск по номеру эталона")
+            elif self.eq_type == "vri_id":
+                self._update_progressbar(0, "Поиск по номеру записи")
+
+            self.search_thread.is_running = True
+
+            self.ui.plainTextEdit_owner.setPlainText(ORG_NAME)
+
+            if self.eq_type == "vri_id":
+                if "-" not in self.number:
+                    self.number = f"1-{self.number}"
+                url = f"{URL_START}/vri/{self.number}"
+                self.search_thread.url = url
+                self.search_thread.start()
+            else:
+                url = f"{URL_START}/{self.eq_type}?rows=100&search={self.number}"
+                self.search_thread.url = url
+                self.search_thread.start()
+
     # -------------------НАЖАТИЕ КНОПКИ ПОИСКА ОБОРУДОВАНИЯ ИЗ АРШИНА--------------------------------------------------
     def _on_start_search(self):
         self._clear_all()
@@ -911,11 +1077,11 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         dialog.setInputMode(QInputDialog.TextInput)
         dialog.setWindowTitle("Поиск эталона в ФГИС \"Аршин\"")
         dialog.setLabelText("Введите один из номеров:\n"
-                            "- номер в реестре;\n"
+                            "- номер в реестре (19775-00);\n"
                             "- номер эталона единиц величин;\n"
-                            "- номер в перечне СИ, применяемых в качестве эталона;\n"
-                            "- номер свидетельства формата 2021 года;\n"
-                            "- номер записи сведений в ФИФ ОЕИ.")
+                            "- номер в перечне СИ, применяемых в качестве эталона (36438.07.РЭ.00164658);\n"
+                            "- номер свидетельства формата 2021 года (С-КС/05-05-2021/32165498);\n"
+                            "- номер записи сведений в ФИФ (1-32165498 или 32165498).")
         dialog.textValueChanged.connect(lambda: self._input_verify(dialog))
         result = dialog.exec()
         if result == QDialog.Accepted:
@@ -958,17 +1124,48 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 self.search_thread.url = url
                 self.search_thread.start()
 
+    # --------------------------------ПРОВЕРКА ВВОДА НОМЕРА ДЛЯ ПОИСКА ПОВЕРКИ-----------------------------------------
+    def _input_verify_vri(self, dialog):
+        self.eq_type = ""
+        self.get_type = ""
+        if not dialog.textValue():
+            dialog.setLabelText("Введите один из номеров:\n"
+                                "- номер записи сведений в ФИФ (1-32165498 или 32165498);\n"
+                                "- номер свидетельства формата 2021 года (С-КС/05-05-2021/32165498);\n"
+                                "- номер в перечне СИ, применяемых в качестве эталона (36438.07.РЭ.00164658).")
+            return
+        rx_vri_id = QRegExp("^([1-2]\-)*\d{6,10}\s*$")
+        rx_svid = QRegExp("^(С|И)\-\S{1,3}\/[0-3][0-9]\-[0-1][0-9]\-20[2-5][0-9]\/\d{8,10}$")
+        rx_mieta = QRegExp("^[1-9]\d{0,5}\.\d{2}\.(0Р|1Р|2Р|3Р|4Р|5Р|РЭ|ВЭ|СИ)\.\d+\s*$")
+        rx_vri_id.setCaseSensitivity(False)
+        rx_svid.setCaseSensitivity(False)
+        rx_mieta.setCaseSensitivity(False)
+        if rx_mieta.indexIn(dialog.textValue()) == 0:
+            dialog.setLabelText(f"Номер в перечне СИ, применяемых в качестве эталонов")
+            self.eq_type = "mieta"
+            self.get_type = "vri"
+        elif rx_svid.indexIn(dialog.textValue()) == 0:
+            dialog.setLabelText(f"Номер свидетельства о поверке")
+            self.eq_type = "vri"
+            self.get_type = "vri"
+        elif rx_vri_id.indexIn(dialog.textValue()) == 0:
+            dialog.setLabelText(f"Номер записи сведений в ФИФ ОЕИ")
+            self.eq_type = "vri_id"
+            self.get_type = "vri"
+        else:
+            dialog.setLabelText("Введенный номер не определяется. Проверьте правильность ввода")
+
     # --------------------------------ПРОВЕРКА ВВОДА НОМЕРА ДЛЯ ПОИСКА ОБОРУДОВАНИЯ------------------------------------
     def _input_verify(self, dialog):
         self.eq_type = ""
         self.get_type = ""
         if not dialog.textValue():
             dialog.setLabelText("Введите один из номеров:\n"
-                                "- номер в реестре;\n"
+                                "- номер в реестре (19775-00);\n"
                                 "- номер эталона единиц величин;\n"
-                                "- номер в перечне СИ, применяемых в качестве эталона;\n"
-                                "- номер свидетельства формата 2021 года;\n"
-                                "- номер записи сведений в ФИФ ОЕИ.")
+                                "- номер в перечне СИ, применяемых в качестве эталона (36438.07.РЭ.00164658);\n"
+                                "- номер свидетельства формата 2021 года (С-КС/05-05-2021/32165498);\n"
+                                "- номер записи сведений в ФИФ (1-32165498 или 32165498).")
             return
         rx_mit = QRegExp("^[1-9][0-9]{0,5}-[0-9]{2}$")
         rx_npe = QRegExp("^гэт[1-9][0-9]{0,2}-(([0-9]{2})|([0-9]{4}))$")
@@ -1022,18 +1219,31 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 self.dialog.close()
                 return
             if self.resp_json:
-                if self.get_type == "mieta_vri":
-                    self.vri = self.resp_json
-                    self._get_vri_info()
-                elif "mit" in self.search_thread.url:
-                    self._get_mit()
-                elif "vri" in self.search_thread.url:
-                    self._get_vri()
-                elif "mieta" in self.search_thread.url:
-                    self._get_mieta()
-
+                if self.get_type != "vri":
+                    if self.get_type == "mieta_vri":
+                        self.vri = self.resp_json
+                        self._get_vri_info()
+                    elif "mit" in self.search_thread.url:
+                        self._get_mit()
+                    elif "vri" in self.search_thread.url:
+                        self._get_vri()
+                    elif "mieta" in self.search_thread.url:
+                        self._get_mieta()
+                    else:
+                        self.dialog.close()
                 else:
-                    self.dialog.close()
+                    if self.eq_type == "vri_id":
+                        self.vri = self.resp_json
+                        print(self.vri)
+                        self._get_vri_info()
+                    elif "mit" in self.search_thread.url:
+                        self._get_mit()
+                    elif "vri" in self.search_thread.url:
+                        self._get_vri()
+                    elif "mieta" in self.search_thread.url:
+                        self._get_mieta()
+                    else:
+                        self.dialog.close()
 
     # ---------------------------------ПОЛУЧЕНИЕ ИНФОРМАЦИИ О СИ ПО НОМЕРУ РЕЕСТРА-------------------------------------
     def _get_mit(self):
@@ -1339,7 +1549,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
     # ---------------------------------ПОЛУЧЕНИЕ ИНФОРМАЦИИ О ПОВЕРКАХ ИЗ АРШИНА---------------------------------------
     def _get_vri_info(self):
 
-        self.get_type = "mieta_vri"
+        if self.get_type != "vri":
+            self.get_type = "mieta_vri"
 
         if 'result' in self.vri and 'vriInfo' in self.vri['result']:
             vriInfo = self.vri['result']['vriInfo']
@@ -1387,13 +1598,13 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 cert_num = vriInfo['inapplicable']['noticeNum']
                 row.append(QStandardItem(cert_num))
                 row.append(QStandardItem("БРАК"))
-            row.append(QStandardItem(self.vri_numbers[0][1]))
 
             if 'organization' in vriInfo:
                 if "(" in vriInfo['organization']:
                     organization = str(vriInfo['organization'])[str(vriInfo['organization']).find("(") + 1:-1]
                 else:
                     organization = str(vriInfo['organization'])
+            row.append(QStandardItem(organization))
 
             if 'signCipher' in vriInfo:
                 signCipher = vriInfo['signCipher']
@@ -1470,7 +1681,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 row.append(QStandardItem(f"{rankTitle}\n{regNumber}: {schemaTitle}"))
             else:
                 row.append(QStandardItem("-"))
-            self.tbl_vri_model.appendRow(row)
+            self.tbl_vri_model.insertRow(0, row)
 
             if cert_num:
                 self.temp_vri_dict[cert_num] = {'organization': organization,
@@ -1501,7 +1712,11 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                                                 'npenumber': npenumber,
                                                 'schematype': schematype,
                                                 'schemaTitle': schemaTitle}
-            self._on_vri_select(self.tbl_vri_model.item(0, 2).index())
+
+            index = self.tbl_vri_proxy_model.mapFromSource(self.tbl_vri_model.index(0, 2))
+            self.ui.tableView_vri_list.setCurrentIndex(index)
+            self.ui.tableView_vri_list.scrollTo(index)
+            self._on_vri_select(index)
 
             # ЕСЛИ ИЩЕМ ПО НОМЕРУ ЭТАЛОНА, ТО УДАЛЯЕМ ПЕРВУЮ ПОВЕРКУ И ИЩЕМ СЛЕДУЮЩУЮ
             if self.eq_type == "mieta":
