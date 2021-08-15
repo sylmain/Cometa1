@@ -1,8 +1,9 @@
 import json
+from openpyxl import load_workbook
 from json.decoder import JSONDecodeError
 
 from PyQt5.QtCore import QRegExp, QThread, pyqtSignal, Qt, QStringListModel, QEvent, QDate, QSortFilterProxyModel, \
-    QItemSelectionModel
+    QItemSelectionModel, pyqtSlot
 from PyQt5.QtGui import QStandardItemModel, QStandardItem, QCloseEvent
 from PyQt5.QtWidgets import QApplication, QMainWindow, QInputDialog, QDialog, QMessageBox, QProgressDialog, \
     QAbstractItemView, QPushButton
@@ -10,10 +11,15 @@ from functions_pkg.send_get_request import GetRequest
 from equipment_pkg.ui_equipment import Ui_MainWindow
 from functions_pkg.db_functions import MySQLConnection
 import functions_pkg.functions as func
+from equipment_pkg.equipment_functions import *
+
+# from equipment_pkg.equipment_requests import send_request
 
 STATUS_LIST = ["СИ", "СИ в качестве эталона", "Эталон единицы величины"]
+VRI_TYPE_LIST = ["периодическая", "первичная"]
 URL_START = "https://fgis.gost.ru/fundmetrology/eapi"
 ORG_NAME = func.get_organization_name()
+MEASURE_CODES = func.get_measure_codes()
 
 
 class SearchThread(QThread):
@@ -28,10 +34,10 @@ class SearchThread(QThread):
         if self.is_running:
             self.sleep(1)
             print("thread running")
-            print(self.url)
+            print(f" {self.url}")
             resp = GetRequest.getRequest(self.url)
-            print(resp)
-            print("thread stopped")
+            print(f"  {resp}")
+            print("    thread stopped")
             self.msg_signal.emit(resp)
         else:
             self.msg_signal.emit("stop")
@@ -46,22 +52,24 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.search_thread = SearchThread()
 
         self._add_connects()
+        self._appearance_init()
 
-        self.measure_codes_dict = dict()
-        self.mis_dict = dict()
-        self.mi_deps = dict()
-        self.mis_vri_dict = dict()
-        self.temp_vri_dict = dict()
+        self.mi_dict = dict()  # словарь оборудования из базы
+        self.mi_deps = dict()  # связка прибор-много отделов
+        self.mis_vri_dict = dict()  # словарь всех поверок
+        self.mietas_dict = dict()  # словарь всех эталонов
+        self.set_of_vri_id = set()  # множество id поверок (меняется при перекючении прибора)
+        self.set_of_mi = set()  # множество приборов {наименование, тип, заводской номер}
+        self.set_of_vri = set()  # множество поверок {дата, номер св-ва, номер эталона} (меняется)
+        self.temp_vri_dict = dict()  # временный словарь поверок при поиске оборудования (или поверок)
+        self.temp_set_of_vri_id = set()  # временное множество id поверок при поиске оборудования (или поверок)
 
         self.mit_search = dict()
         self.mit = dict()
-
-        self.vri_search = dict()
-        self.vri = dict()
-        self.vri_numbers = list()
-
         self.mieta_search = dict()
         self.mieta = dict()
+        self.vri_search = dict()
+        self.vri = dict()
 
         self.tbl_vri_model = QStandardItemModel(0, 7, parent=self)
         self.tbl_mi_model = QStandardItemModel(0, 6, parent=self)
@@ -82,6 +90,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
         self._add_measure_codes()
         self.ui.comboBox_status.addItems(STATUS_LIST)
+        self.ui.comboBox_vri_vriType.addItems(VRI_TYPE_LIST)
 
         self.departments = func.get_departments()
         self.workers = func.get_workers()
@@ -96,17 +105,24 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.tabWidget.setCurrentIndex(0)
 
     def _create_dicts(self):
-        self.mis_dict = func.get_mis()['mis_dict']
+        self.mi_dict = func.get_mis()['mi_dict']
+        self.set_of_mi = func.get_mis()['set_of_mi']
         self.mi_deps = func.get_mi_deps()['mi_deps_dict']
-        self.mietas_dict = func.get_mietas()['mietas_dict']
         self.mis_vri_dict = func.get_mis_vri_info()['mis_vri_dict']
+        self.mietas_dict = func.get_mietas()['mietas_dict']
+        print(self.set_of_mi)
 
     def _add_measure_codes(self):
-        self.measure_codes_dict = func.get_measure_codes()['measure_codes_dict']
-        code_names = list()
-        for code in self.measure_codes_dict:
-            code_names.append(f"{self.measure_codes_dict[code]['code']} {self.measure_codes_dict[code]['name']}")
-        self.ui.comboBox_measure_code.addItems(sorted(code_names))
+        self.ui.comboBox_measure_code.addItems(["- Не определено"])
+        self.ui.comboBox_measure_code.addItems(sorted(MEASURE_CODES['measure_codes_list']))
+
+    def _add_measure_subcodes(self, new_code):
+        self.ui.comboBox_measure_subcode.setToolTip(new_code)
+        self.ui.comboBox_measure_subcode.clear()
+        self.ui.comboBox_measure_subcode.addItems(["- Не определено"])
+        if "Не определено" not in new_code:
+            code = new_code[:2]
+            self.ui.comboBox_measure_subcode.addItems(sorted(MEASURE_CODES['measure_sub_codes_dict'][code]))
 
     def _add_connects(self):
         self.ui.toolButton_equip_add.clicked.connect(self._on_start_search)
@@ -120,23 +136,37 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.pushButton_save_vri.clicked.connect(self._on_save_vri)
         self.ui.pushButton_save_mieta.clicked.connect(self._on_save_mieta)
         self.ui.pushButton_add_vri.clicked.connect(self._on_add_vri)
+        self.ui.pushButton_find_vri.clicked.connect(self._on_find_vri)
         self.ui.pushButton_clear_vri.clicked.connect(self._clear_vri_tab)
         self.ui.pushButton_clear_mieta.clicked.connect(self._clear_mieta_tab)
         self.ui.pushButton_add_dep.clicked.connect(self._on_add_dep)
         self.ui.pushButton_remove_dep.clicked.connect(self._on_remove_dep)
         self.ui.pushButton_clear.clicked.connect(self._clear_all)
         self.ui.pushButton_delete_mi.clicked.connect(self._on_delete_mi)
+        self.ui.pushButton_import.clicked.connect(self._on_import)
+        # self.ui.pushButton_delete_mi.clicked.connect(self._test)
+        self.ui.pushButton_delete_vri.clicked.connect(self._on_delete_vri)
         self.ui.comboBox_status.currentTextChanged.connect(self._on_status_changed)
+        self.ui.comboBox_measure_code.currentTextChanged.connect(self._add_measure_subcodes)
         self.ui.radioButton_applicable.toggled.connect(self._on_applicable_toggle)
         self.ui.tabWidget.currentChanged.connect(self._on_tab_changed)
         # self.ui.lineEdit_reg_card_number.textChanged.connect(self._appearance_init)
 
+    def _on_import(self):
+        wb = load_workbook(filename='./equipment.xlsx')
+        sheet = wb['Лист1']
+        count = sheet.max_row
+        for i in range(1, count + 1):
+            print(sheet[f"A{i}"].value)
+
     # ---------------------------------------------ВНЕШНИЙ ВИД ПРИ СТАРТЕ----------------------------------------------
     def _appearance_init(self):
-        if not self.ui.lineEdit_reg_card_number.text():
-            self.ui.lineEdit_reg_card_number.setStyleSheet("border: 1px solid red")
-        else:
-            self.ui.lineEdit_reg_card_number.setStyleSheet(None)
+        # if not self.ui.lineEdit_reg_card_number.text():
+        #     self.ui.lineEdit_reg_card_number.setStyleSheet("border: 1px solid red")
+        # else:
+        #     self.ui.lineEdit_reg_card_number.setStyleSheet(None)
+        self.ui.frame_mieta_buttons.hide()
+        self.ui.frame_vri_buttons.hide()
 
     # -----------------------------------ВИДИМОСТЬ КНОПОК ПРИ ПЕРЕКЛЮЧЕНИИ ВКЛАДОК-------------------------------------
     def _on_tab_changed(self, tab_index):
@@ -151,8 +181,9 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             self.ui.frame_mi_info_buttons.show()
 
     def _test(self):
-        for i in range(0, self.tbl_mi_model.rowCount()):
-            print(self.tbl_mi_model.index(i, 2).data())
+        # for i in range(0, self.tbl_mi_model.rowCount()):
+        #     print(self.tbl_mi_model.index(i, 2).data())
+        pass
 
     # -------------------------------------ВИДИМОСТЬ БРАК/ГОДЕН ПРИ ПЕРЕКЛЮЧЕНИИ---------------------------------------
     def _on_applicable_toggle(self, choisen):
@@ -183,33 +214,35 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         row = index.row()
         mi_id = self.tbl_mi_model.index(row, 5).data()
         if mi_id:
-            if mi_id in self.mis_dict:
+            self.ui.pushButton_find_vri.show()
+            if mi_id in self.mi_dict:
                 self._update_mi_tab(mi_id)
                 self._update_vri_table(mi_id)
 
         if self.tbl_vri_model.rowCount() > 0:
             self.ui.tableView_vri_list.selectionModel().select(self.tbl_vri_model.item(0, 1).index(),
                                                                QItemSelectionModel.SelectCurrent)
-            self._on_vri_select(self.tbl_vri_model.item(0, 1).index())
+            self._on_vri_select(self.tbl_vri_proxy_model.index(0, 1))
 
     # -------------------ОБНОВЛЕНИЕ ИНФОРМАЦИИ ПОЛЕЙ ПРИ ВЫБОРЕ ПОВЕРКИ В ТАБЛИЦЕ ПОВЕРОК------------------------------
     def _on_vri_select(self, index):
         row = index.row()
         vri_id = self.tbl_vri_proxy_model.index(row, 6).data()
-        self._clear_vri_tab()
+        # self._clear_vri_tab()
 
+        # ЕСЛИ ПОВЕРКА ЕСТЬ В БАЗЕ
         if vri_id:
-            mi_id = self.ui.lineEdit_equip_id.text()
+            mi_id = self.ui.lineEdit_mi_id.text()
             if mi_id:
                 self.ui.lineEdit_vri_id.setText(vri_id)
-                self._update_vri_tab(self.mis_vri_dict[mi_id][vri_id])
+                self._update_vri_tab(vri_id)
                 self._update_mieta_tab(vri_id)
         else:
             if self.temp_vri_dict:
                 cert_num = self.tbl_vri_proxy_model.index(row, 2).data()
                 if cert_num in self.temp_vri_dict:
-                    self._update_vri_tab(self.temp_vri_dict[cert_num])
-                    self._update_mieta_tab(vri_id)
+                    self._update_vri_tab()
+                    self._update_mieta_tab()
                 else:
                     self._clear_mieta_tab()
 
@@ -225,14 +258,16 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.tableView_mi_list.setColumnWidth(3, 100)
         self.ui.tableView_mi_list.setColumnWidth(4, 110)
         self.ui.tableView_mi_list.setColumnWidth(5, 0)
-        for mi_id in self.mis_dict:
+        for mi_id in self.mi_dict:
             row = []
-            row.append(QStandardItem(self.mis_dict[mi_id]['reg_card_number']))
-            row.append(QStandardItem(
-                func.get_measure_code_from_id(self.mis_dict[mi_id]['measure_code'], self.measure_codes_dict)))
-            row.append(QStandardItem(self.mis_dict[mi_id]['title']))
-            row.append(QStandardItem(self.mis_dict[mi_id]['modification']))
-            row.append(QStandardItem(self.mis_dict[mi_id]['number']))
+            row.append(QStandardItem(self.mi_dict[mi_id]['reg_card_number']))
+            if self.mi_dict[mi_id]['measure_code'] != "0":
+                row.append(QStandardItem(self.mi_dict[mi_id]['measure_code']))
+            else:
+                row.append(QStandardItem(""))
+            row.append(QStandardItem(self.mi_dict[mi_id]['title']))
+            row.append(QStandardItem(self.mi_dict[mi_id]['modification']))
+            row.append(QStandardItem(self.mi_dict[mi_id]['number']))
             row.append(QStandardItem(mi_id))
             self.tbl_mi_model.appendRow(row)
         self.ui.tableView_mi_list.resizeRowsToContents()
@@ -240,40 +275,46 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
     # -----------------------------------------ОБНОВЛЕНИЕ ТАБЛИЦЫ ПОВЕРОК----------------------------------------------
     def _update_vri_table(self, mi_id=None):
+        self.set_of_vri.clear()
+        self.set_of_vri_id.clear()
         if mi_id and mi_id in self.mis_vri_dict:
             self.tbl_vri_model.clear()
             for vri_id in self.mis_vri_dict[mi_id]:
                 row = list()
-                row.append(QStandardItem(self.mis_vri_dict[mi_id][vri_id]['vrfDate']))
+                regNumber = ""
+
+                # КОЛОНКИ ТАБЛИЦЫ ПОВЕРОК
+                vri_vrf_date = self.mis_vri_dict[mi_id][vri_id]['vrfDate']
+                vri_valid_date = "БЕССРОЧНО"
+                vri_cert_number = self.mis_vri_dict[mi_id][vri_id]['certNum']
+                vri_result = "ГОДЕН"
+                vri_organization = self.mis_vri_dict[mi_id][vri_id]['organization']
+                vri_mieta = "нет"
+
                 if self.mis_vri_dict[mi_id][vri_id]['applicable'] == "1":
                     if self.mis_vri_dict[mi_id][vri_id]['validDate']:
-                        row.append(QStandardItem(self.mis_vri_dict[mi_id][vri_id]['validDate']))
-                    else:
-                        row.append(QStandardItem("Бессрочно"))
-                    row.append(QStandardItem(self.mis_vri_dict[mi_id][vri_id]['certNum']))
-                    row.append(QStandardItem("ГОДЕН"))
+                        vri_valid_date = self.mis_vri_dict[mi_id][vri_id]['validDate']
                 else:
-                    row.append(QStandardItem("-"))
-                    row.append(QStandardItem(self.mis_vri_dict[mi_id][vri_id]['certNum']))
-                    row.append(QStandardItem("БРАК"))
-
-                row.append(QStandardItem(self.mis_vri_dict[mi_id][vri_id]['organization']))
+                    vri_valid_date = "-"
+                    vri_result = "БРАК"
 
                 if vri_id in self.mietas_dict:
                     rankTitle = self.mietas_dict[vri_id]['rankclass']
-                    schemaTitle = self.mietas_dict[vri_id]['schematitle']
-                    schematype = self.mietas_dict[vri_id]['schematype']
                     regNumber = self.mietas_dict[vri_id]['number']
-                    if rankTitle and schemaTitle and regNumber and schematype:
-                        row.append(QStandardItem(f"{regNumber}: {rankTitle.lower()}\n{schematype}: {schemaTitle}"))
-                    elif rankTitle and schemaTitle and regNumber:
-                        row.append(QStandardItem(f"{regNumber}: {rankTitle.lower()}\n{schemaTitle}"))
-                    else:
-                        row.append(QStandardItem("нет данных"))
-                else:
-                    row.append(QStandardItem("нет"))
+                    if rankTitle and regNumber:
+                        vri_mieta = f"{regNumber}: {rankTitle.lower()}"
+
+                row.append(QStandardItem(vri_vrf_date))
+                row.append(QStandardItem(vri_valid_date))
+                row.append(QStandardItem(vri_cert_number))
+                row.append(QStandardItem(vri_result))
+                row.append(QStandardItem(vri_organization))
+                row.append(QStandardItem(vri_mieta))
                 row.append(QStandardItem(vri_id))
                 self.tbl_vri_model.appendRow(row)
+
+                self.set_of_vri.add((vri_vrf_date, vri_cert_number, regNumber))
+                self.set_of_vri_id.add(self.mis_vri_dict[mi_id][vri_id]['FIF_id'])
 
         self.tbl_vri_model.setHorizontalHeaderLabels(
             ["Дата поверки", "Годен до", "Номер свидетельства", "Результат", "Организация-поверитель", "Эталон", "id"])
@@ -290,56 +331,90 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
     # ---------------------------------------ОБНОВЛЕНИЕ ВКЛАДКИ ОБ ОБОРУДОВАНИИ----------------------------------------
     def _update_mi_tab(self, mi_id):
 
-        self.ui.lineEdit_equip_id.setText(mi_id)
-        self.ui.lineEdit_reg_card_number.setText(self.mis_dict[mi_id]['reg_card_number'])
-        self.ui.comboBox_measure_code.setCurrentText(
-            func.get_measure_code_name_from_id(self.mis_dict[mi_id]['measure_code'], self.measure_codes_dict))
-        self.ui.comboBox_status.setCurrentText(self.mis_dict[mi_id]['status'])
-        self.ui.lineEdit_reestr.setText(self.mis_dict[mi_id]['reestr'])
-        self.ui.plainTextEdit_title.setPlainText(self.mis_dict[mi_id]['title'])
-        self.ui.plainTextEdit_type.setPlainText(self.mis_dict[mi_id]['type'])
-        self.ui.lineEdit_modification.setText(self.mis_dict[mi_id]['modification'])
-        self.ui.lineEdit_number.setText(self.mis_dict[mi_id]['number'])
-        self.ui.lineEdit_inv_number.setText(self.mis_dict[mi_id]['inv_number'])
-        self.ui.plainTextEdit_manufacturer.setPlainText(self.mis_dict[mi_id]['manufacturer'])
-        self.ui.lineEdit_manuf_year.setText(self.mis_dict[mi_id]['manuf_year'])
-        self.ui.lineEdit_expl_year.setText(self.mis_dict[mi_id]['expl_year'])
-        self.ui.lineEdit_diapazon.setText(self.mis_dict[mi_id]['diapazon'])
-        self.ui.lineEdit_PG.setText(self.mis_dict[mi_id]['PG'])
-        self.ui.lineEdit_KT.setText(self.mis_dict[mi_id]['KT'])
-        self.ui.plainTextEdit_other_characteristics.setPlainText(self.mis_dict[mi_id]['other_characteristics'])
-        self.ui.lineEdit_MPI.setText(self.mis_dict[mi_id]['MPI'])
-        self.ui.plainTextEdit_purpose.setPlainText(self.mis_dict[mi_id]['purpose'])
-        self.ui.plainTextEdit_personal.setPlainText(self.mis_dict[mi_id]['personal'])
-        self.ui.plainTextEdit_software_inner.setPlainText(self.mis_dict[mi_id]['software_inner'])
-        self.ui.plainTextEdit_software_outer.setPlainText(self.mis_dict[mi_id]['software_outer'])
-        self.ui.plainTextEdit_owner.setPlainText(self.mis_dict[mi_id]['owner'])
-        self.ui.plainTextEdit_owner_contract.setPlainText(self.mis_dict[mi_id]['owner_contract'])
+        self.ui.lineEdit_mi_id.setText(mi_id)
+        self.ui.lineEdit_reg_card_number.setText(self.mi_dict[mi_id]['reg_card_number'])
 
-        if self.mis_dict[mi_id]['RE'] != "0":
+        self.ui.comboBox_measure_code.setCurrentIndex(0)
+        self.ui.comboBox_measure_subcode.setCurrentIndex(0)
+        measure_code_id = self.mi_dict[mi_id]['measure_code']
+        if measure_code_id != "0":
+            measure_code_name = func.get_measure_code_name_from_id(measure_code_id, MEASURE_CODES)
+            if measure_code_name:
+                if len(measure_code_id) == 2:
+                    self.ui.comboBox_measure_code.setCurrentText(f"{measure_code_id} {measure_code_name}")
+                elif len(measure_code_id) == 4:
+                    measure_subcode_id = measure_code_id
+                    measure_subcode_name = measure_code_name
+                    measure_code_id = measure_code_id[:2]
+                    measure_code_name = func.get_measure_code_name_from_id(measure_code_id, MEASURE_CODES)
+                    if measure_code_name:
+                        self.ui.comboBox_measure_code.setCurrentText(f"{measure_code_id} {measure_code_name}")
+                    self.ui.comboBox_measure_subcode.setCurrentText(f"{measure_subcode_id} {measure_subcode_name}")
+
+        self.ui.comboBox_status.setCurrentText(self.mi_dict[mi_id]['status'])
+        self.ui.lineEdit_reestr.setText(self.mi_dict[mi_id]['reestr'])
+        self.ui.plainTextEdit_title.setPlainText(self.mi_dict[mi_id]['title'])
+        self.ui.plainTextEdit_type.setPlainText(self.mi_dict[mi_id]['type'])
+        self.ui.lineEdit_modification.setText(self.mi_dict[mi_id]['modification'])
+        self.ui.lineEdit_number.setText(self.mi_dict[mi_id]['number'])
+        self.ui.lineEdit_inv_number.setText(self.mi_dict[mi_id]['inv_number'])
+        self.ui.plainTextEdit_manufacturer.setPlainText(self.mi_dict[mi_id]['manufacturer'])
+        self.ui.lineEdit_manuf_year.setText(self.mi_dict[mi_id]['manuf_year'])
+        self.ui.lineEdit_expl_year.setText(self.mi_dict[mi_id]['expl_year'])
+        self.ui.lineEdit_diapazon.setText(self.mi_dict[mi_id]['diapazon'])
+        self.ui.lineEdit_PG.setText(self.mi_dict[mi_id]['PG'])
+        self.ui.lineEdit_KT.setText(self.mi_dict[mi_id]['KT'])
+        self.ui.plainTextEdit_other_characteristics.setPlainText(self.mi_dict[mi_id]['other_characteristics'])
+        self.ui.lineEdit_MPI.setText(self.mi_dict[mi_id]['MPI'])
+        self.ui.plainTextEdit_purpose.setPlainText(self.mi_dict[mi_id]['purpose'])
+        self.ui.plainTextEdit_personal.setPlainText(self.mi_dict[mi_id]['personal'])
+        self.ui.plainTextEdit_software_inner.setPlainText(self.mi_dict[mi_id]['software_inner'])
+        self.ui.plainTextEdit_software_outer.setPlainText(self.mi_dict[mi_id]['software_outer'])
+        self.ui.plainTextEdit_owner.setPlainText(self.mi_dict[mi_id]['owner'])
+        self.ui.plainTextEdit_owner_contract.setPlainText(self.mi_dict[mi_id]['owner_contract'])
+
+        if self.mi_dict[mi_id]['RE'] != "0":
             self.ui.checkBox_has_manual.setChecked(True)
         else:
             self.ui.checkBox_has_manual.setChecked(False)
-        if self.mis_dict[mi_id]['pasport'] != "0":
+        if self.mi_dict[mi_id]['pasport'] != "0":
             self.ui.checkBox_has_pasport.setChecked(True)
         else:
             self.ui.checkBox_has_pasport.setChecked(False)
-        if self.mis_dict[mi_id]['MP'] != "0":
+        if self.mi_dict[mi_id]['MP'] != "0":
             self.ui.checkBox_has_verif_method.setChecked(True)
         else:
             self.ui.checkBox_has_verif_method.setChecked(False)
-        self.ui.lineEdit_period_TO.setText(self.mis_dict[mi_id]['TO_period'])
+        self.ui.lineEdit_period_TO.setText(self.mi_dict[mi_id]['TO_period'])
 
         self._update_owner_info()
 
     # ---------------------------------------ОБНОВЛЕНИЕ ВКЛАДКИ О ПОВЕРКЕ----------------------------------------------
-    def _update_vri_tab(self, vri_dict):
+    def _update_vri_tab(self, vri_id=None):
+        self._clear_vri_tab()
+        # ЕСЛИ ПОВЕРКА СОХРАНЕНА
+        if vri_id:
+            mi_id = self.ui.lineEdit_mi_id.text()
+            if mi_id and mi_id in self.mis_vri_dict and vri_id in self.mis_vri_dict[mi_id]:
+                vri_dict = self.mis_vri_dict[mi_id][vri_id]
+            else:
+                return
+        # ЕСЛИ ПОВЕРКА НЕ СОХРАНЕНА, НО ЕСТЬ ВО ВРЕМЕННОМ СЛОВАРЕ ПОВЕРОК
+        else:
+            row = self.ui.tableView_vri_list.currentIndex().row()
+            cert_num = self.tbl_vri_proxy_model.index(row, 2).data()
+            if self.temp_vri_dict and cert_num in self.temp_vri_dict:
+                vri_dict = self.temp_vri_dict[cert_num]
+            else:
+                return
+        self.ui.lineEdit_vri_id.setText(vri_id)
+        self.ui.lineEdit_vri_FIF_id.setText(vri_dict['FIF_id'])
         self.ui.plainTextEdit_vri_organization.setPlainText(vri_dict['organization'])
         self.ui.lineEdit_vri_signCipher.setText(vri_dict['signCipher'])
         self.ui.plainTextEdit_vri_miOwner.setPlainText(vri_dict['miOwner'])
         self.ui.lineEdit_vrfDate.setText(vri_dict['vrfDate'])
         self.ui.lineEdit_vri_validDate.setText(vri_dict['validDate'])
-        self.ui.lineEdit_vri_vriType.setText(vri_dict['vriType'])
+        self.ui.comboBox_vri_vriType.setCurrentText(vri_dict['vriType'])
         self.ui.plainTextEdit_vri_docTitle.setPlainText(vri_dict['docTitle'])
         if int(vri_dict['applicable']):
             self.ui.radioButton_applicable.setChecked(True)
@@ -361,7 +436,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.plainTextEdit_vri_additional_info.setPlainText(vri_dict['additional_info'])
 
     # ----------------------------------ОБНОВЛЕНИЕ ВКЛАДКИ ОБ ЭТАЛОНЕ--------------------------------------------------
-    def _update_mieta_tab(self, vri_id):
+    def _update_mieta_tab(self, vri_id=None):
         self._clear_mieta_tab()
         if vri_id and vri_id in self.mietas_dict:
             self.ui.lineEdit_mieta_id.setText(self.mietas_dict[vri_id]['mieta_id'])
@@ -372,7 +447,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             self.ui.lineEdit_mieta_schematype.setText(self.mietas_dict[vri_id]['schematype'])
             self.ui.plainTextEdit_mieta_schematitle.setPlainText(self.mietas_dict[vri_id]['schematitle'])
         elif self.temp_vri_dict:
-            cert_num = self.ui.tableView_vri_list.currentIndex().data()
+            row = self.ui.tableView_vri_list.currentIndex().row()
+            cert_num = self.tbl_vri_proxy_model.index(row, 2).data()
             # print(cert_num)
             if cert_num in self.temp_vri_dict:
                 self.ui.lineEdit_mieta_number.setText(self.temp_vri_dict[cert_num]['regNumber'])
@@ -384,7 +460,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
     # --------------------------------ОБНОВЛЕНИЕ ПОЛЕЙ ОТДЕЛА, СОТРУДНИКОВ И КОМНАТ------------------------------------
     def _update_owner_info(self):
-        mi_id = self.ui.lineEdit_equip_id.text()
+        mi_id = self.ui.lineEdit_mi_id.text()
         if mi_id:
             dep_name_list = list()
             if mi_id in self.mi_deps:
@@ -406,14 +482,17 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             self.cb_room_model.setStringList(room_list)
 
             self.ui.comboBox_responsiblePerson.setCurrentText(
-                func.get_worker_fio_from_id(self.mis_dict[mi_id]['responsible_person'], self.workers['worker_dict']))
+                func.get_worker_fio_from_id(self.mi_dict[mi_id]['responsible_person'], self.workers['worker_dict']))
 
             self.ui.comboBox_room.setCurrentText(
-                func.get_room_number_from_id(self.mis_dict[mi_id]['room'], self.rooms['room_dict']))
+                func.get_room_number_from_id(self.mi_dict[mi_id]['room'], self.rooms['room_dict']))
 
     # ------------------------------------------ОЧИСТКА ВСЕГО----------------------------------------------------------
     def _clear_all(self):
         # self.mis_vri_dict.clear()
+        self.ui.pushButton_find_vri.hide()
+
+        self.set_of_vri.clear()
         self.temp_vri_dict.clear()
         self.tbl_vri_model.clear()
 
@@ -429,7 +508,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.cb_worker_model.setStringList([])
         self.cb_room_model.setStringList([])
 
-        self.ui.lineEdit_equip_id.setText("")
+        self.ui.lineEdit_mi_id.setText("")
         self.ui.comboBox_status.setCurrentIndex(0)
         self.ui.comboBox_measure_code.setCurrentIndex(0)
         self.ui.lineEdit_reg_card_number.setText("")
@@ -476,11 +555,12 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
     def _clear_vri_tab(self):
         # self.temp_vri_dict.clear()
         self.ui.lineEdit_vri_id.setText("")
+        self.ui.lineEdit_vri_FIF_id.setText("")
         self.ui.plainTextEdit_vri_organization.setPlainText("")
         self.ui.plainTextEdit_vri_miOwner.setPlainText("")
         self.ui.lineEdit_vrfDate.setText("")
         self.ui.lineEdit_vri_validDate.setText("")
-        self.ui.lineEdit_vri_vriType.setText("")
+        self.ui.comboBox_vri_vriType.setCurrentIndex(0)
         self.ui.plainTextEdit_vri_docTitle.setPlainText("")
         self.ui.radioButton_applicable.setChecked(True)
         self.ui.lineEdit_vri_certNum.setText("")
@@ -508,23 +588,19 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             QMessageBox.warning(self, "Ошибка сохранения", "Необходимо ввести номер регистрационной карточки")
             return
 
-        mi_id = self.ui.lineEdit_equip_id.text()
+        mi_id = self.ui.lineEdit_mi_id.text()
         if not mi_id:
             mi_id = "NULL"
 
-        measure_code_id = func.get_measure_code_id_from_name(self.ui.comboBox_measure_code.currentText(),
-                                                             self.measure_codes_dict)
+        measure_code_id = self._get_measure_code_id()
         resp_person_id = func.get_worker_id_from_fio(self.ui.comboBox_responsiblePerson.currentText(),
                                                      self.workers['worker_dict'])
-
         room_id = func.get_room_id_from_number(self.ui.comboBox_room.currentText(), self.rooms['room_dict'])
-
-        card_number = self.ui.lineEdit_reg_card_number.text()
 
         sql_replace = f"REPLACE INTO mis VALUES (" \
                       f"{mi_id}, " \
                       f"'{self.ui.lineEdit_reg_card_number.text()}', " \
-                      f"{int(measure_code_id)}, " \
+                      f"{measure_code_id}, " \
                       f"'{self.ui.comboBox_status.currentText()}', " \
                       f"'{self.ui.lineEdit_reestr.text()}', " \
                       f"'{self.ui.plainTextEdit_title.toPlainText()}', " \
@@ -634,7 +710,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
             if self.ui.checkBox_vri_briefIndicator.isChecked():
                 briefIndicator = 1
-
+            # todo изменить, чтобы сохранялось с экрана
             sql_replace = f"REPLACE INTO mis_vri_info VALUES (" \
                           f"{vri_id}, " \
                           f"{mi_id}, " \
@@ -643,7 +719,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                           f"'{self.ui.plainTextEdit_vri_miOwner.toPlainText()}', " \
                           f"'{self.ui.lineEdit_vrfDate.text()}', " \
                           f"'{self.ui.lineEdit_vri_validDate.text()}', " \
-                          f"'{self.ui.lineEdit_vri_vriType.text()}', " \
+                          f"'{self.ui.comboBox_vri_vriType.currentText()}', " \
                           f"'{self.ui.plainTextEdit_vri_docTitle.toPlainText()}', " \
                           f"{applicable}, " \
                           f"'{cert_num}', " \
@@ -705,23 +781,19 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             QMessageBox.warning(self, "Ошибка сохранения", "Необходимо ввести номер регистрационной карточки")
             return
 
-        mi_id = self.ui.lineEdit_equip_id.text()
+        mi_id = self.ui.lineEdit_mi_id.text()
         if not mi_id:
             mi_id = "NULL"
 
-        measure_code_id = func.get_measure_code_id_from_name(self.ui.comboBox_measure_code.currentText(),
-                                                             self.measure_codes_dict)
+        measure_code_id = self._get_measure_code_id()
         resp_person_id = func.get_worker_id_from_fio(self.ui.comboBox_responsiblePerson.currentText(),
                                                      self.workers['worker_dict'])
-
         room_id = func.get_room_id_from_number(self.ui.comboBox_room.currentText(), self.rooms['room_dict'])
-
-        card_number = self.ui.lineEdit_reg_card_number.text()
 
         sql_replace = f"REPLACE INTO mis VALUES (" \
                       f"{mi_id}, " \
                       f"'{self.ui.lineEdit_reg_card_number.text()}', " \
-                      f"{int(measure_code_id)}, " \
+                      f"{measure_code_id}, " \
                       f"'{self.ui.comboBox_status.currentText()}', " \
                       f"'{self.ui.lineEdit_reestr.text()}', " \
                       f"'{self.ui.plainTextEdit_title.toPlainText()}', " \
@@ -784,24 +856,21 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         MySQLConnection.execute_transaction_query(connection, sql_insert, sql_delete)
         connection.close()
 
-        self._clear_all()
-        self.mis_dict = func.get_mis()['mis_dict']
+        self.mi_dict = func.get_mis()['mi_dict']
+        self.set_of_mi = func.get_mis()['set_of_mi']
         self.mi_deps = func.get_mi_deps()['mi_deps_dict']
-
         self._update_mi_table()
-        self._update_mi_tab(mi_id)
-
         row = self.tbl_mi_model.indexFromItem(self.tbl_mi_model.findItems(mi_id, column=5)[0]).row()
         index = self.tbl_mi_model.index(row, 0)
         self.ui.tableView_mi_list.setCurrentIndex(index)
         self.ui.tableView_mi_list.scrollTo(index)
-
+        self._on_mi_select(index)
         QMessageBox.information(self, "Сохранено", "Информация сохранена")
 
     # -------------------------------------КЛИК ПО КНОПКЕ "СОХРАНИТЬ ПОВЕРКУ"------------------------------------------
     def _on_save_vri(self):
 
-        mi_id = self.ui.lineEdit_equip_id.text()
+        mi_id = self.ui.lineEdit_mi_id.text()
         if not mi_id:
             QMessageBox.critical(self, "Ошибка", "Сначала выполните сохранение оборудования")
             return
@@ -821,9 +890,11 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 signPass = 1
             if self.ui.checkBox_vri_signMi.isChecked():
                 signMi = 1
+            valid_date = self.ui.lineEdit_vri_validDate.text()
         else:
             applicable = 0
             cert_num = self.ui.lineEdit_vri_noticeNum.text()
+            valid_date = ""
 
         if self.ui.checkBox_vri_briefIndicator.isChecked():
             briefIndicator = 1
@@ -835,8 +906,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                       f"'{self.ui.lineEdit_vri_signCipher.text()}', " \
                       f"'{self.ui.plainTextEdit_vri_miOwner.toPlainText()}', " \
                       f"'{self.ui.lineEdit_vrfDate.text()}', " \
-                      f"'{self.ui.lineEdit_vri_validDate.text()}', " \
-                      f"'{self.ui.lineEdit_vri_vriType.text()}', " \
+                      f"'{valid_date}', " \
+                      f"'{self.ui.comboBox_vri_vriType.currentText()}', " \
                       f"'{self.ui.plainTextEdit_vri_docTitle.toPlainText()}', " \
                       f"{applicable}, " \
                       f"'{cert_num}', " \
@@ -852,7 +923,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                       f"'{self.ui.plainTextEdit_vri_channels.toPlainText()}', " \
                       f"'{self.ui.plainTextEdit_vri_blocks.toPlainText()}', " \
                       f"'{self.ui.plainTextEdit_vri_additional_info.toPlainText()}', " \
-                      f"'');"
+                      f"'', " \
+                      f"'{self.ui.lineEdit_vri_FIF_id.text()}');"
         MySQLConnection.verify_connection()
         connection = MySQLConnection.create_connection()
         result = MySQLConnection.execute_query(connection, sql_replace)
@@ -860,26 +932,29 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         if result[0]:
             vri_id = str(result[1])
             self.mis_vri_dict = func.get_mis_vri_info()['mis_vri_dict']
-
+            # ЕСЛИ ЭТАЛОН НЕ СОХРАНЕН, НО ЕСТЬ НОМЕР ЭТАЛОНА, СОХРАНЯЕМ ЕГО И ОБНОВЛЯЕМ ТАБЛИЦУ ПОВЕРОК
             if not self.ui.lineEdit_mieta_id.text() and self.ui.lineEdit_mieta_number.text():
                 self._on_save_mieta(vri_id=vri_id)
+            # ИНАЧЕ ОБНОВЛЯЕМ ТАБЛИЦУ ПОВЕРОК
             else:
                 self._update_vri_table(mi_id)
-
-            self._update_vri_tab(self.mis_vri_dict[mi_id][vri_id])
+            self._update_vri_tab(vri_id)
         QMessageBox.information(self, "Сохранено", "Информация о поверке сохранена")
 
     # ---------------------------------------КЛИК ПО КНОПКЕ "СОХРАНИТЬ ЭТАЛОН"-----------------------------------------
     def _on_save_mieta(self, mi_id="", vri_id=""):
-        mieta_id = self.ui.lineEdit_mieta_id.text()
-        if not mi_id:
-            mi_id = self.ui.lineEdit_equip_id.text()
-        if not vri_id:
+        if not mi_id:  # если не передано mi_id, то берем с экрана
+            mi_id = self.ui.lineEdit_mi_id.text()
+        if not vri_id:  # если не передано vri_id, то берем с экрана
             vri_id = self.ui.lineEdit_vri_id.text()
-
-        if not mi_id or not vri_id:
+        if not mi_id or not vri_id:  # если и на экране пусто - ошибка
             QMessageBox.critical(self, "Ошибка", "Сначала выполните сохранение оборудования и (или) поверки")
             return
+        if not self.ui.lineEdit_mieta_number.text():  # если отсутствует номер эталона - ошибка
+            QMessageBox.critical(self, "Ошибка", "Не указан номер в реестре эталонов")
+            return
+
+        mieta_id = self.ui.lineEdit_mieta_id.text()
         if not mieta_id:
             mieta_id = "NULL"
 
@@ -906,7 +981,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
     # -------------------------------------КЛИК ПО КНОПКЕ "УДАЛИТЬ ОБОРУДОВАНИЕ"---------------------------------------
     def _on_delete_mi(self):
-        mi_id = self.ui.lineEdit_equip_id.text()
+        mi_id = self.ui.lineEdit_mi_id.text()
         if mi_id:
             dialog = QMessageBox(self)
             dialog.setWindowTitle("Подтверждение удаления")
@@ -937,12 +1012,89 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 self._update_vri_table()
                 self._clear_all()
 
+    # -----------------------------------------КЛИК ПО КНОПКЕ "УДАЛИТЬ ПОВЕРКУ-"---------------------------------------
+    def _on_delete_vri(self):
+        vri_id = self.ui.lineEdit_vri_id.text()
+        mi_id = self.ui.lineEdit_mi_id.text()
+        if vri_id and mi_id:
+            dialog = QMessageBox(self)
+            dialog.setWindowTitle("Подтверждение удаления")
+            dialog.setText(f"Вы действительно хотите удалить поверку?\n"
+                           f"Также удалится вся информация об эталоне.")
+            dialog.setIcon(QMessageBox.Warning)
+            btn_yes = QPushButton("&Да")
+            btn_no = QPushButton("&Нет")
+            dialog.addButton(btn_yes, QMessageBox.AcceptRole)
+            dialog.addButton(btn_no, QMessageBox.RejectRole)
+            dialog.setDefaultButton(btn_no)
+            dialog.setEscapeButton(btn_no)
+            result = dialog.exec()
+            if result == 0:
+                sql_delete_1 = f"DELETE FROM mis_vri_info WHERE vri_id = {int(vri_id)}"
+                sql_delete_2 = f"DELETE FROM mietas WHERE mieta_vri_id = {int(vri_id)}"
+                MySQLConnection.verify_connection()
+                connection = MySQLConnection.create_connection()
+                MySQLConnection.execute_transaction_query(connection, sql_delete_1, sql_delete_2)
+                connection.close()
+
+                self.mietas_dict = func.get_mietas()['mietas_dict']
+                self.mis_vri_dict = func.get_mis_vri_info()['mis_vri_dict']
+
+                self._update_vri_table(mi_id)
+                if self.tbl_vri_proxy_model.rowCount() > 0:
+                    vri_id = self.tbl_vri_proxy_model.index(0, 6).data()
+                    if vri_id:
+                        self._update_vri_tab(vri_id)
+                        self._update_mieta_tab(vri_id)
+                        self.ui.tableView_vri_list.selectRow(0)
+                        # self.ui.tableView_vri_list.scrollTo()
+                else:
+                    self._clear_vri_tab()
+                    self._clear_mieta_tab()
+
+    # -------------------------------------КЛИК ПО КНОПКЕ "НАЙТИ ПОВЕРКИ"----------------------------------------------
+    def _on_find_vri(self):
+        mi_id = self.ui.lineEdit_mi_id.text()
+        if not mi_id:
+            return
+        reestr_number = self.ui.lineEdit_reestr.text()
+        manuf_number = self.ui.lineEdit_number.text()
+        if reestr_number and manuf_number:
+            self.get_type = "find_vri"
+            url = f"{URL_START}/vri?year=2020&rows=100&search={reestr_number}%20{manuf_number}"
+            self.search_thread.url = url
+            self.search_thread.start()
+
+    # --------------------------------ОТВЕТ НА КЛИК ПО КНОПКЕ "НАЙТИ ПОВЕРКИ"------------------------------------------
+    def _on_find_vri_resp(self):
+        if 'result' in self.resp_json and 'count' in self.resp_json['result']:
+            if self.resp_json['result']['count'] > 0:
+                for item in self.resp_json['result']['items']:
+                    if str(item['vri_id']).startswith("1-"):
+                        self.temp_set_of_vri_id.add(str(item['vri_id']))
+        self.eq_type = "vri_id"
+        self.get_type = "vri_id"
+        self.number = self.temp_set_of_vri_id.pop()
+        self.dialog = QProgressDialog(self)
+        self.dialog.setAutoClose(False)
+        self.dialog.setAutoReset(False)
+        self.dialog.setWindowTitle("ОЖИДАЙТЕ! Идет поиск!")
+        self.dialog.setCancelButtonText("Прервать")
+        self.dialog.canceled.connect(self._on_search_stopped)
+        self.dialog.setRange(0, 100)
+        self.dialog.setWindowModality(Qt.WindowModal)
+        self.dialog.resize(350, 100)
+        self.dialog.show()
+        url = f"{URL_START}/vri/{self.number}"
+        self.search_thread.url = url
+        self.search_thread.start()
+
     # -------------------------------------КЛИК ПО КНОПКЕ "ДОБАВИТЬ ОТДЕЛ"---------------------------------------------
     def _on_add_dep(self):
         cur_dep_list = self.lv_dep_model.stringList()
         full_dep_list = self.departments['dep_name_list']
         choose_list = sorted(list(set(full_dep_list) - set(cur_dep_list)))
-        mi_id = self.ui.lineEdit_equip_id.text()
+        mi_id = self.ui.lineEdit_mi_id.text()
         if choose_list:
             dep_name, ok = QInputDialog.getItem(self, "Выбор отдела",
                                                 "Выберите отдел, который использует данное оборудование",
@@ -971,10 +1123,10 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
                 if mi_id:
                     self.ui.comboBox_responsiblePerson.setCurrentText(
-                        func.get_worker_fio_from_id(self.mis_dict[mi_id]['responsible_person'],
+                        func.get_worker_fio_from_id(self.mi_dict[mi_id]['responsible_person'],
                                                     self.workers['worker_dict']))
                     self.ui.comboBox_room.setCurrentText(
-                        func.get_room_number_from_id(self.mis_dict[mi_id]['room'], self.rooms['room_dict']))
+                        func.get_room_number_from_id(self.mi_dict[mi_id]['room'], self.rooms['room_dict']))
         else:
             QMessageBox.information(self, "Выбора нет", "Все подразделения включены в список")
 
@@ -986,7 +1138,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         dep_name = self.ui.listView_departments.currentIndex().data()
         cur_dep_list = self.lv_dep_model.stringList()
         cur_dep_list.remove(dep_name)
-        mi_id = self.ui.lineEdit_equip_id.text()
+        mi_id = self.ui.lineEdit_mi_id.text()
 
         self.lv_dep_model.setStringList(cur_dep_list)
         dep_list = list()
@@ -1007,10 +1159,10 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
         if mi_id:
             self.ui.comboBox_responsiblePerson.setCurrentText(
-                func.get_worker_fio_from_id(self.mis_dict[mi_id]['responsible_person'],
+                func.get_worker_fio_from_id(self.mi_dict[mi_id]['responsible_person'],
                                             self.workers['worker_dict']))
             self.ui.comboBox_room.setCurrentText(
-                func.get_room_number_from_id(self.mis_dict[mi_id]['room'], self.rooms['room_dict']))
+                func.get_room_number_from_id(self.mi_dict[mi_id]['room'], self.rooms['room_dict']))
 
     # -------------------НАЖАТИЕ КНОПКИ ДОБАВИТЬ ПОВЕРКУ ИЗ АРШИНА-----------------------------------------------------
     def _on_add_vri(self):
@@ -1048,12 +1200,16 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
             self.search_thread.is_running = True
 
-            self.ui.plainTextEdit_owner.setPlainText(ORG_NAME)
-
             if self.eq_type == "vri_id":
                 if "-" not in self.number:
                     self.number = f"1-{self.number}"
                 url = f"{URL_START}/vri/{self.number}"
+                self.search_thread.url = url
+                self.search_thread.start()
+            elif self.eq_type == "vri":
+                self.eq_type = "vri_id"
+                self.number = self.number.rsplit("/", 1)[1]
+                url = f"{URL_START}/vri/1-{self.number}"
                 self.search_thread.url = url
                 self.search_thread.start()
             else:
@@ -1065,17 +1221,17 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
     def _on_start_search(self):
         self._clear_all()
         self.ui.tableView_mi_list.selectionModel().clearSelection()
-        self.mit_search.clear()
-        self.mit.clear()
-        self.vri_search.clear()
-        self.vri.clear()
-        self.mieta_search.clear()
-        self.mieta.clear()
-        self.vri_numbers.clear()
+        # self.mit_search.clear()
+        # self.mit.clear()
+        # self.vri_search.clear()
+        # self.vri.clear()
+        # self.mieta_search.clear()
+        # self.mieta.clear()
+        # self.temp_set_of_vri_id.clear()
 
         dialog = QInputDialog()
         dialog.setInputMode(QInputDialog.TextInput)
-        dialog.setWindowTitle("Поиск эталона в ФГИС \"Аршин\"")
+        dialog.setWindowTitle("Поиск оборудования в ФГИС \"Аршин\"")
         dialog.setLabelText("Введите один из номеров:\n"
                             "- номер в реестре (19775-00);\n"
                             "- номер эталона единиц величин;\n"
@@ -1112,17 +1268,23 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             self.search_thread.is_running = True
 
             self.ui.plainTextEdit_owner.setPlainText(ORG_NAME)
-
+            # ЕСЛИ ИЩЕМ ПО НОМЕРУ ПОВЕРКИ
             if self.eq_type == "vri_id":
-                if "-" not in self.number:
+                if "1-" not in self.number:
                     self.number = f"1-{self.number}"
-                url = f"{URL_START}/vri/{self.number}"
-                self.search_thread.url = url
-                self.search_thread.start()
+                self.search_thread.url = f"{URL_START}/vri/{self.number}"
+            # ЕСЛИ ИЩЕМ ПО НОМЕРУ СВИДЕТЕЛЬСТВА
+            elif self.eq_type == "vri":
+                self.eq_type = "vri_id"
+                self.number = f"1-{self.number.rsplit('/', 1)[1]}"
+                self.search_thread.url = f"{URL_START}/vri/{self.number}"
+            elif self.eq_type == "mieta":
+                self.number = self.number.rsplit('.', 1)[1]
+                self.search_thread.url = f"{URL_START}/mieta/{self.number}"
             else:
-                url = f"{URL_START}/{self.eq_type}?rows=100&search={self.number}"
-                self.search_thread.url = url
-                self.search_thread.start()
+                self.search_thread.url = f"{URL_START}/{self.eq_type}?rows=100&search={self.number}"
+            # ЗАПУСКАЕМ ПОИСК
+            self.search_thread.start()
 
     # --------------------------------ПРОВЕРКА ВВОДА НОМЕРА ДЛЯ ПОИСКА ПОВЕРКИ-----------------------------------------
     def _input_verify_vri(self, dialog):
@@ -1134,7 +1296,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                                 "- номер свидетельства формата 2021 года (С-КС/05-05-2021/32165498);\n"
                                 "- номер в перечне СИ, применяемых в качестве эталона (36438.07.РЭ.00164658).")
             return
-        rx_vri_id = QRegExp("^([1-2]\-)*\d{6,10}\s*$")
+        rx_vri_id = QRegExp("^([1-2]\-)*\d{1,15}\s*$")
         rx_svid = QRegExp("^(С|И)\-\S{1,3}\/[0-3][0-9]\-[0-1][0-9]\-20[2-5][0-9]\/\d{8,10}$")
         rx_mieta = QRegExp("^[1-9]\d{0,5}\.\d{2}\.(0Р|1Р|2Р|3Р|4Р|5Р|РЭ|ВЭ|СИ)\.\d+\s*$")
         rx_vri_id.setCaseSensitivity(False)
@@ -1172,7 +1334,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         rx_uve = QRegExp("^[1-3]\.[0-9]\.\S{3}\.\d{4}\.20[0-4]\d$")
         rx_mieta = QRegExp("^[1-9]\d{0,5}\.\d{2}\.(0Р|1Р|2Р|3Р|4Р|5Р|РЭ|ВЭ|СИ)\.\d+\s*$")
         rx_svid = QRegExp("^(С|И)\-\S{1,3}\/[0-3][0-9]\-[0-1][0-9]\-20[2-5][0-9]\/\d{8,10}$")
-        rx_vri_id = QRegExp("^([1-2]\-)*\d{6,10}\s*$")
+        rx_vri_id = QRegExp("^([1-2]\-)*\d{1,15}\s*$")
         rx_mit.setCaseSensitivity(False)
         rx_npe.setCaseSensitivity(False)
         rx_uve.setCaseSensitivity(False)
@@ -1194,6 +1356,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         elif rx_svid.indexIn(dialog.textValue()) == 0:
             dialog.setLabelText(f"Номер свидетельства о поверке")
             self.eq_type = "vri"
+            self.get_type = "vri_id"
         elif rx_vri_id.indexIn(dialog.textValue()) == 0:
             dialog.setLabelText(f"Номер записи сведений в ФИФ ОЕИ")
             self.eq_type = "vri_id"
@@ -1204,7 +1367,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
     # --------------------------------------ОБРАБОТКА ПОЛУЧЕННОГО ОТВЕТА ОТ СЕРВЕРА------------------------------------
     def _on_getting_resp(self, resp):
         if not resp or resp.startswith("Error") or resp.startswith("<!DOCTYPE html>"):
-            QMessageBox.critical("Ошибка", f"Возникла ошибка получения сведений из ФГИС \"АРШИН\".\n{resp}")
+            QMessageBox.critical(self, "Ошибка", f"Возникла ошибка получения сведений из ФГИС \"АРШИН\".\n{resp}")
             self.dialog.close()
             return
         elif resp == "stop":
@@ -1219,25 +1382,40 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 self.dialog.close()
                 return
             if self.resp_json:
+                # ЕСЛИ ИЩЕМ ПОВЕРКИ ПО НОМЕРУ В РЕЕСТРЕ И ЗАВОДСКОМУ НОМЕРУ
+                if self.get_type == "find_vri":
+                    self._on_find_vri_resp()
+                    return
+                # ЕСЛИ ДОБАВЛЯЕМ ОБОРУДОВАНИЕ
                 if self.get_type != "vri":
                     if self.get_type == "mieta_vri":
                         self.vri = self.resp_json
                         self._get_vri_info()
-                    elif "mit" in self.search_thread.url:
+                    elif "mit?" in self.search_thread.url:
+                        self.mit_search = self.resp_json
+                        self._get_mit_search()
+                    elif "mit/" in self.search_thread.url:
+                        self.mit = self.resp_json
                         self._get_mit()
-                    elif "vri" in self.search_thread.url:
+                    elif "vri?" in self.search_thread.url:
+                        self.vri_search = self.resp_json
+                        self._get_vri_search()
+                    elif "vri/" in self.search_thread.url:
+                        self.vri = self.resp_json
                         self._get_vri()
-                    elif "mieta" in self.search_thread.url:
+                    elif "mieta?" in self.search_thread.url:
+                        self.mieta_search = self.resp_json
+                        self._get_mieta_search()
+                    elif "mieta/" in self.search_thread.url:
+                        self.mieta = self.resp_json
                         self._get_mieta()
                     else:
                         self.dialog.close()
+                # ЕСЛИ ДОБАВЛЯЕМ РЕЗУЛЬТАТЫ ПОВЕРКИ
                 else:
                     if self.eq_type == "vri_id":
                         self.vri = self.resp_json
-                        print(self.vri)
                         self._get_vri_info()
-                    elif "mit" in self.search_thread.url:
-                        self._get_mit()
                     elif "vri" in self.search_thread.url:
                         self._get_vri()
                     elif "mieta" in self.search_thread.url:
@@ -1245,128 +1423,99 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                     else:
                         self.dialog.close()
 
-    # ---------------------------------ПОЛУЧЕНИЕ ИНФОРМАЦИИ О СИ ПО НОМЕРУ РЕЕСТРА-------------------------------------
-    def _get_mit(self):
+    # ------------------------------------------ОБРАБОТКА MIT_SEARCH---------------------------------------------------
+    def _get_mit_search(self):
 
-        # получаем self.mit_search
-        if "search" in self.search_thread.url \
-                and 'result' in self.resp_json \
-                and 'count' in self.resp_json['result']:
+        if 'result' in self.resp_json and 'count' in self.resp_json['result']:
+            result = self.resp_json['result']
 
             # если ищем по номеру в реестре
             if self.eq_type == "mit":
-                if self.resp_json['result']['count'] == 0:
+                # если результаты не найдены
+                if result['count'] == 0:
                     self.dialog.close()
                     QMessageBox.critical(self, "Ошибка",
                                          f"Очевидно, вы пытались ввести номер реестра СИ, но ФГИС "
                                          f"\"АРШИН\" не содержит такой записи.\n"
-                                         f"Перепроверьте правильность введенного номера")
+                                         f"Проверьте правильность введенного номера")
                     return
-                elif self.resp_json['result']['count'] == 1:
-                    self.mit_search = self.resp_json
-                    self._update_progressbar(50, "Поиск информации в реестре утвержденных типов СИ")
-                    url = f"{URL_START}/mit/{self.resp_json['result']['items'][0]['mit_id']}"
-                    self.search_thread.url = url
-                    self.search_thread.start()
-                elif self.resp_json['result']['count'] < 50:
+                # если найдена одна запись
+                elif result['count'] == 1:
+                    if 'items' in result and 'mit_id' in result['items'][0]:
+                        mit_id = result['items'][0]['mit_id']
+                        self._update_progressbar(50, "Поиск информации в реестре утвержденных типов СИ")
+                        self.search_thread.url = f"{URL_START}/mit/{mit_id}"
+                        self.search_thread.start()
+                # если найдено от 2 до 50 записей, создаем список и даем диалог выбора подходящего реестра
+                elif result['count'] < 50:
                     items_list = list()
-                    for item in self.resp_json['result']['items']:
-                        item_name_list = list()
-                        if 'number' in item:
-                            item_name_list.append(item['number'])
-                        if 'title' in item:
-                            item_name_list.append(item['title'])
-                        if 'notation' in item:
-                            item_name_list.append(item['notation'])
-                        if 'manufactorer' in item:
-                            item_name_list.append(item['manufactorer'])
-                        item_name = " ".join(item_name_list)
-                        if len(item_name) > 150:
-                            items_list.append(f"{item_name[:150]}...")
-                        else:
-                            items_list.append(item_name)
+                    if 'items' in result:
+                        for item in result['items']:
+                            item_name_list = list()
+                            if 'number' in item:
+                                item_name_list.append(item['number'])
+                            if 'title' in item:
+                                item_name_list.append(item['title'])
+                            if 'notation' in item:
+                                item_name_list.append(item['notation'])
+                            if 'manufactorer' in item:
+                                item_name_list.append(item['manufactorer'])
+                            item_name = " ".join(item_name_list)
+                            if len(item_name) > 150:
+                                items_list.append(f"{item_name[:150]}...")
+                            else:
+                                items_list.append(item_name)
 
                     s, ok = QInputDialog.getItem(self, "Выбор реестра", "Выберите необходимый реестр", items_list,
                                                  current=0, editable=False)
                     if ok and s:
-                        self.mit_search = self.resp_json
                         self._update_progressbar(50, "Поиск информации в реестре утвержденных типов СИ")
-                        url = f"{URL_START}/mit/{self.resp_json['result']['items'][items_list.index(s)]['mit_id']}"
-                        self.search_thread.url = url
-                        self.search_thread.start()
-                else:
-                    QMessageBox.critical(self, "Ошибка", "Слишком много результатов поиска. Уточните номер")
-                    # self._stop_search()
-                    return
-
-            # если ищем по номеру свидетельства
-
-            elif self.eq_type == "vri" or self.eq_type == "mieta" or self.eq_type == "vri_id":
-                if self.resp_json['result']['count'] == 0:
-                    QMessageBox.critical(self, "Ошибка", f"Невозможно найти номер в реестре")
-                else:
-                    self.mit_search = self.resp_json
-                    self._update_progressbar(85, "Поиск информации в реестре утвержденных типов СИ")
-                    if 'result' in self.resp_json and 'items' in self.resp_json['result']:
-                        url = f"{URL_START}/mit/{self.resp_json['result']['items'][0]['mit_id']}"
+                        url = f"{URL_START}/mit/{result['items'][items_list.index(s)]['mit_id']}"
                         self.search_thread.url = url
                         self.search_thread.start()
                     else:
+                        self._on_search_stopped()
+                        return
+                # если результатов больше 50
+                else:
+                    self._on_search_stopped()
+                    QMessageBox.critical(self, "Ошибка", "Слишком много результатов поиска. Уточните номер")
+                    return
+
+            # если ищем по номеру эталона или поверки
+            elif self.eq_type == "mieta" or self.eq_type == "vri_id":
+                # если результаты не найдены
+                if result['count'] == 0:
+                    self._on_search_stopped()
+                    QMessageBox.critical(self, "Ошибка", f"Невозможно найти номер в реестре")
+                    return
+                # если результаты найдены, берем id первой записи и ищем реестр
+                else:
+                    self._update_progressbar(85, "Поиск информации в реестре утвержденных типов СИ")
+                    if 'items' in result and 'mit_id' in result['items'][0]:
+                        self.search_thread.url = f"{URL_START}/mit/{result['items'][0]['mit_id']}"
+                        self.search_thread.start()
+                    else:
                         self.dialog.close()
+        else:
+            self._on_search_stopped()
+            return
+    # -------------------------------------------ОБРАБОТКА MIT---------------------------------------------------------
+    def _get_mit(self):
 
-        # получаем self.mit
-        elif "mit/" in self.search_thread.url:
-            self.mit = self.resp_json
+        # если ищем по номеру в реестре
+        if self.eq_type == "mit":
 
-            if self.eq_type == "mit":
-                self._fill_mit()
-                self._on_search_finished()
+            # КОНЕЦ ПОИСКА
+            self._fill_mi_info()
+            self._on_search_finished()
 
-            elif self.eq_type == "vri" or self.eq_type == "mieta" or self.eq_type == "vri_id":
-                self._fill_vri()
-                self._fill_mit()
-                self._get_vri_info()
+        # если ищем по номеру эталона или поверки
+        elif self.eq_type == "mieta" or self.eq_type == "vri_id":
+            self._get_vri_info()
 
-    # ------------------------------------ЗАПОЛНЕНИЕ ИНФОРМАЦИИ С РЕЕСТРА----------------------------------------------
-    def _fill_mit(self):
-        if 'general' in self.mit:
-            general = self.mit['general']
-            # записываем номер реестра, наименование, тип
-            if 'number' in general:
-                self.ui.lineEdit_reestr.setText(general['number'])
-            if 'title' in general:
-                self.ui.plainTextEdit_title.setPlainText(general['title'])
-            if 'notation' in general:
-                self.ui.plainTextEdit_type.setPlainText(" ,".join(general['notation']))
-        if 'manufacturer' in self.mit:
-            manufacturer = self.mit['manufacturer']
-            # записываем производителя
-            manufacturer_list = list()
-            if 'title' in manufacturer[0]:
-                manufacturer_list.append(manufacturer[0]['title'])
-            if 'country' in manufacturer[0]:
-                manufacturer_list.append(manufacturer[0]['country'])
-            if 'locality' in manufacturer[0]:
-                manufacturer_list.append(manufacturer[0]['locality'])
-            self.ui.plainTextEdit_manufacturer.setPlainText(", ".join(manufacturer_list))
-        if 'mit' in self.mit:
-            mit = self.mit['mit']
-            if 'interval' in mit:
-                for word in mit['interval'].split(" "):
-                    if word.isdigit():
-                        if "мес" in mit['interval']:
-                            self.ui.lineEdit_MPI.setText(str(int(word)))
-                        else:
-                            self.ui.lineEdit_MPI.setText(str(int(word) * 12))
-
-            if 'period' in mit and (mit['period'] == "Да" or mit['period'] == "да"):
-                self.ui.radioButton_MPI_yes.setChecked(True)
-            else:
-                self.ui.radioButton_MPI_no.setChecked(True)
-                self.ui.lineEdit_MPI.setText("")
-
-    # ------------------------------ПОЛУЧЕНИЕ ИНФОРМАЦИИ О СИ ПО НОМЕРУ СВИДЕТЕЛЬСТВА----------------------------------
-    def _get_vri(self):
+    # -------------------------------------------ОБРАБОТКА VRI_SEARCH--------------------------------------------------
+    def _get_vri_search(self):
 
         # получаем self.vri_search
         if "search" in self.search_thread.url and 'result' in self.resp_json and 'count' in self.resp_json[
@@ -1384,8 +1533,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 self.vri_search = self.resp_json
                 self._update_progressbar(20, "Поиск информации о результатах поверки СИ")
                 if 'result' in self.resp_json:
-                    url = f"{URL_START}/vri/{self.resp_json['result']['items'][0]['vri_id']}"
-                    self.search_thread.url = url
+                    self.number = self.resp_json['result']['items'][0]['vri_id']
+                    self.search_thread.url = f"{URL_START}/vri/{self.number}"
                     self.search_thread.start()
                 else:
                     self.dialog.close()
@@ -1393,104 +1542,87 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 QMessageBox.critical(self, "Ошибка", "Слишком много результатов поиска. Уточните номер свидетельства")
                 self.dialog.close()
                 return
+        else:
+            self._on_search_stopped()
+            return
 
-        # получаем self.vri
-        elif "vri/" in self.search_thread.url:
-            self.vri = self.resp_json
-            mitypeNumber = ""
-            mitypeTitle = ""
-            if self.eq_type == "mieta":
-                if 'result' in self.mieta:
-                    if 'mitype_num' in self.mieta['result']:  # номер реестра
-                        mitypeNumber = self.mieta['result']['mitype_num']
-                    if 'mitype' in self.mieta['result']:  # наименование
-                        mitypeTitle = self.mieta['result']['mitype']
+    # -----------------------------------------------ОБРАБОТКА VRI-----------------------------------------------------
+    def _get_vri(self):
+        if 'result' in self.resp_json and 'miInfo' in self.resp_json['result']:
+            miInfo = self.resp_json['result']['miInfo']
+        else:
+            self._on_search_stopped()
+            return
 
-                    if mitypeNumber and mitypeTitle:
-                        self._update_progressbar(70, "Поиск номера в реестре утвержденных типов СИ")
-                        url = f"{URL_START}/mit?rows=100&search={mitypeNumber}%20{mitypeTitle.replace(' ', '%20')}"
-                        self.search_thread.url = url
+        mitypeNumber = mitypeTitle = ""
+
+        # ЕСЛИ ИЩЕМ ПО НОМЕРУ ЭТАЛОНА
+        if self.eq_type == "mieta":
+            if 'result' in self.mieta:
+                if 'mitype_num' in self.mieta['result']:  # номер реестра
+                    mitypeNumber = self.mieta['result']['mitype_num']
+                if 'mitype' in self.mieta['result']:  # наименование
+                    mitypeTitle = self.mieta['result']['mitype']
+
+                if mitypeNumber and mitypeTitle:
+                    self._update_progressbar(70, "Поиск номера в реестре утвержденных типов СИ")
+                    url = f"{URL_START}/mit?rows=100&search={mitypeNumber}%20{mitypeTitle.replace(' ', '%20')}"
+                    self.search_thread.url = url
+                    self.search_thread.start()
+
+        # ЕСЛИ ИЩЕМ ПО ID ПОВЕРКИ
+        elif self.eq_type == "vri_id":
+            # ЕСЛИ ЭТО ОКАЗАЛСЯ ЭТАЛОН
+            if 'etaMI' in miInfo:
+                miInfo = miInfo['etaMI']
+                if self.eq_type == "vri_id":
+                    if 'regNumber' in miInfo:
+                        regNumber = miInfo['regNumber'].rsplit('.', 1)[1]
+                        self._update_progressbar(40, "Поиск номера эталона")
+                        self.search_thread.url = f"{URL_START}/mieta/{regNumber}"
                         self.search_thread.start()
-
-            else:
-                if 'miInfo' in self.vri['result']:
-                    if 'etaMI' in self.vri['result']['miInfo']:
-                        miInfo = self.vri['result']['miInfo']['etaMI']
-                        if self.eq_type == "vri" or self.eq_type == "vri_id":
-                            if 'regNumber' in miInfo:
-                                regNumber = miInfo['regNumber']
-                                self._update_progressbar(40, "Поиск номера эталона")
-                                url = f"{URL_START}/mieta?rows=100&search={regNumber}"
-                                self.search_thread.url = url
-                                self.search_thread.start()
-                    elif 'singleMI' in self.vri['result']['miInfo'] or self.eq_type == "mieta":
-                        miInfo = self.vri['result']['miInfo']['singleMI']
-
-                        if 'mitypeNumber' in miInfo:  # номер реестра
-                            mitypeNumber = miInfo['mitypeNumber']
-                        if 'mitypeTitle' in miInfo:  # наименование
-                            mitypeTitle = miInfo['mitypeTitle']
-
-                        if self.eq_type == "vri_id":
-                            self.vri_numbers.append([f"1-{self.number}",
-                                                     self.vri['result']['vriInfo']['organization']])
-                        else:
-                            self.vri_numbers.append([self.vri_search['result']['items'][0]['vri_id'],
-                                                     self.vri_search['result']['items'][0]['org_title']])
-
-                        if mitypeNumber and mitypeTitle:
-                            self._update_progressbar(50, "Поиск номера в реестре утвержденных типов СИ")
-                            url = f"{URL_START}/mit?rows=100&search={mitypeNumber}%20{mitypeTitle.replace(' ', '%20')}"
-                            self.search_thread.url = url
-                            self.search_thread.start()
-                        else:
-                            self._fill_vri()
-                            self._get_vri_info()
-                    elif 'partyMI' in self.vri['result']['miInfo']:
-                        miInfo = self.vri['result']['miInfo']['partyMI']
-
-    # -------------------------------ЗАПОЛНЕНИЕ ИНФОРМАЦИИ С НОМЕРА СВИДЕТЕЛЬСТВА--------------------------------------
-    def _fill_vri(self):
-
-        if 'result' in self.vri:
-
-            if 'miInfo' in self.vri['result']:
-                miInfo = self.vri['result']['miInfo']
-                if 'etaMI' in miInfo:
-                    miInfo = miInfo['etaMI']
-                elif 'singleMI' in miInfo:
-                    miInfo = miInfo['singleMI']
-                elif 'partyMI' in miInfo:
-                    miInfo = miInfo['partyMI']
-
-                if 'modification' in miInfo:  # модификация
-                    self.ui.lineEdit_modification.setText(miInfo['modification'])
-                if 'manufactureNum' in miInfo:  # заводской номер
-                    self.ui.lineEdit_number.setText(miInfo['manufactureNum'])
-                if 'inventoryNum' in miInfo:  # инвентарный номер
-                    self.ui.lineEdit_inv_number.setText(miInfo['inventoryNum'])
-                if 'manufactureYear' in miInfo:  # год выпуска
-                    self.ui.lineEdit_manuf_year.setText(str(miInfo['manufactureYear']))
-
-                # СИ НЕ В РЕЕСТРЕ
-                mitypeNumber = ""
+            # ЕСЛИ ЭТО ОБЫЧНОЕ СИ, ЗАПУСКАЕМ ПОИСК В РЕЕСТРЕ ПО НОМЕРУ В РЕЕСТРЕ И НАИМЕНОВАНИЮ
+            elif 'singleMI' in miInfo or self.eq_type == "mieta":
+                miInfo = miInfo['singleMI']
                 if 'mitypeNumber' in miInfo:  # номер реестра
                     mitypeNumber = miInfo['mitypeNumber']
-                if not mitypeNumber:
-                    self.ui.plainTextEdit_title.setPlainText(miInfo['mitypeTitle'])
-                    self.ui.plainTextEdit_type.setPlainText(miInfo['modification'])
-                    self.ui.lineEdit_modification.setText(miInfo['modification'])
-                    if 'vriInfo' in self.vri['result']:
-                        vriInfo = self.vri['result']['vriInfo']
-                        if 'vrfDate' in vriInfo and 'validDate' in vriInfo:
-                            start_date = vriInfo['vrfDate']
-                            end_date = vriInfo['validDate']
-                            self.ui.lineEdit_MPI.setText(str((int(end_date[-4:]) - int(start_date[-4:])) * 12))
-                            self.ui.radioButton_MPI_yes.setChecked(True)
-                        self._on_search_finished()
+                if 'mitypeTitle' in miInfo:  # наименование
+                    mitypeTitle = miInfo['mitypeTitle']
+
+                # ДОБАВЛЯЕМ ID ПОВЕРКИ ВО ВРЕМЕННОЕ МНОЖЕСТВО
+                self.temp_set_of_vri_id.add(self.number)
+
+                # ЕСЛИ СИ В РЕЕСТРЕ, ЗАПУСКАЕМ ПОИСК В РЕЕСТРЕ
+                if mitypeNumber and mitypeTitle:
+                    self._update_progressbar(50, "Поиск номера в реестре утвержденных типов СИ")
+                    url = f"{URL_START}/mit?rows=100&search={mitypeNumber}%20{mitypeTitle.replace(' ', '%20')}"
+                    self.search_thread.url = url
+                    self.search_thread.start()
+                # ЕСЛИ СИ НЕ В РЕЕСТРЕ, ПЕРЕХОДИМ К ЗАПОЛНЕНИЮ ПОВЕРОК
+                else:
+                    self._get_vri_info()
+            elif 'partyMI' in self.vri['result']['miInfo']:
+                miInfo = self.vri['result']['miInfo']['partyMI']
+
+    # --------------------------------ЗАПОЛНЕНИЕ ПОЛЕЙ ВКЛАДКИ ОБЩЕЙ ИНФОРМАЦИЕЙ---------------------------------------
+    def _fill_mi_info(self):
+        mi_dict = get_mi_dict(self.mit, self.vri)
+        self.ui.lineEdit_reestr.setText(mi_dict['number'])
+        self.ui.plainTextEdit_title.setPlainText(mi_dict['title'])
+        self.ui.plainTextEdit_type.setPlainText(mi_dict['notation'])
+        self.ui.plainTextEdit_manufacturer.setPlainText(mi_dict['manufacturer'])
+        self.ui.lineEdit_MPI.setText(mi_dict['MPI'])
+        if mi_dict['hasMPI']:
+            self.ui.radioButton_MPI_yes.setChecked(False)
+        else:
+            self.ui.radioButton_MPI_no.setChecked(True)
+        self.ui.lineEdit_number.setText(mi_dict['manufactureNum'])
+        self.ui.lineEdit_inv_number.setText(mi_dict['inventoryNum'])
+        self.ui.lineEdit_manuf_year.setText(mi_dict['manufactureYear'])
+        self.ui.lineEdit_modification.setText(mi_dict['modification'])
 
     # ---------------------------------ПОЛУЧЕНИЕ ИНФОРМАЦИИ ОБ ЭТАЛОНЕ ИЗ АРШИНА---------------------------------------
-    def _get_mieta(self):
+    def _get_mieta_search(self):
 
         # получаем self.mieta_search
         if 'result' in self.resp_json and 'count' in self.resp_json['result']:
@@ -1509,42 +1641,59 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                         self._update_progressbar(50, "Поиск информации об эталоне")
                     else:
                         self._update_progressbar(25, "Поиск информации об эталоне")
-                    url = f"{URL_START}/mieta/{mieta_id}"
-                    self.search_thread.url = url
+                    self.search_thread.url = f"{URL_START}/mieta/{mieta_id}"
                     self.search_thread.start()
             else:
                 self.dialog.close()
                 QMessageBox.critical(self, "Ошибка", "Слишком много результатов поиска. Уточните номер эталона")
                 return
 
-        # получаем self.mieta
-        elif 'result' in self.resp_json and 'cresults' in self.resp_json['result']:
-            self.mieta = self.resp_json
+    # -----------------------------------------------ОБРАБОТКА MIETA---------------------------------------------------
+    def _get_mieta(self):
+
+        if 'result' in self.resp_json:
             result = self.resp_json['result']
+
             self.ui.comboBox_status.setCurrentText("СИ в качестве эталона")
 
+            #   ДОБАВЛЯЕМ ID ПОВЕРОК В МНОЖЕСТВО
             for cresult in result['cresults']:
-                if 'vri_id' in cresult and 'org_title' in cresult:
-                    self.vri_numbers.append([cresult['vri_id'], cresult['org_title']])
+                if 'vri_id' in cresult:
+                    self.temp_set_of_vri_id.add(cresult['vri_id'])
+            print(self.temp_set_of_vri_id)
 
-            if self.eq_type == "vri" or self.eq_type == "vri_id":
+            #   ЕСЛИ ИЩЕМ ПОВЕРКУ ПО НОМЕРУ ПОВЕРКИ, БЕРЕМ ID ПОВЕРКИ
+            if self.get_type == "vri":
+                self.eq_type = "vri_id"
+                self.number = result['cresults'][0]['vri_id']
+                self.search_thread.url = f"{URL_START}/vri/{self.number}"
+                self.search_thread.start()
+                return
+
+            #   ЕСЛИ ИЩЕМ ОБОРУДОВАНИЕ ПО НОМЕРУ ПОВЕРКИ, БЕРЕМ НОМЕР В РЕЕСТРЕ И ПЕРЕХОДИМ К ПОИСКУ РЕЕСТРА
+            if self.eq_type == "vri_id":
                 if 'mitype_num' in result and 'mitype' in result:  # номер реестра
                     self._update_progressbar(75, "Поиск номера в реестре утвержденных типов СИ")
                     url = f"{URL_START}/mit?rows=100&search={result['mitype_num']}%20{result['mitype'].replace(' ', '%20')}"
                     self.search_thread.url = url
                     self.search_thread.start()
                 else:
-                    self._fill_vri()
+                    self._fill_mi_info()
                     self._get_vri_info()
 
+            #   ЕСЛИ ИЩЕМ ОБОРУДОВАНИЕ КАК ЭТАЛОН, БЕРЕМ ПРОИЗВОЛЬНЫЙ НОМЕР ПОВЕРКИ ИЗ МНОЖЕСТВА,
+            #   СОХРАНЯЕМ ЕГО В self.number И ПЕРЕХОДИМ К ПОИСКУ ПОВЕРКИ
             elif self.eq_type == "mieta":
                 self._update_progressbar(50, "Поиск информации о результатах поверки СИ")
-                if self.vri_numbers:
-                    url = f"{URL_START}/vri/{self.vri_numbers[0][0]}"
-                    self.search_thread.url = url
+                if self.temp_set_of_vri_id:
+                    self.number = self.temp_set_of_vri_id.pop()
+                    self.search_thread.url = f"{URL_START}/vri/{self.number}"
                     self.search_thread.start()
                 else:
                     self.dialog.close()
+        else:
+            self._on_search_stopped()
+            return
 
     # ---------------------------------ПОЛУЧЕНИЕ ИНФОРМАЦИИ О ПОВЕРКАХ ИЗ АРШИНА---------------------------------------
     def _get_vri_info(self):
@@ -1552,166 +1701,37 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         if self.get_type != "vri":
             self.get_type = "mieta_vri"
 
-        if 'result' in self.vri and 'vriInfo' in self.vri['result']:
-            vriInfo = self.vri['result']['vriInfo']
+        resp = get_temp_vri_dict(self.vri, self.mieta)
+        result = resp[0]
+        cert_number = resp[1]
+        if cert_number:
+            self.temp_vri_dict[cert_number] = resp[2]
+            self.temp_vri_dict[cert_number]['FIF_id'] = self.number
 
-            row = list()
-            cert_num = ""
-            organization = ""
-            signCipher = ""
-            miOwner = ""
-            vrfDate = ""
-            validDate = ""
-            vriType = "периодическая"
-            docTitle = ""
-            applicable = "1"
-            stickerNum = ""
-            signPass = "0"
-            signMi = "0"
-            structure = ""
-            briefIndicator = "0"
-            briefCharacteristics = ""
-            ranges = ""
-            values = ""
-            channels = ""
-            blocks = ""
-            additional_info = ""
-            regNumber = ""
-            rankСоdе = ""
-            rankTitle = ""
-            schemaTitle = ""
-            npenumber = ""
-            schematype = ""
-
-            # список поверок для таблицы: дата поверки, годен до или бессрочно, номер свид-ва, результат, поверитель, эталон
-            row.append(QStandardItem(vriInfo['vrfDate']))
-            if 'applicable' in vriInfo and 'certNum' in vriInfo['applicable']:
-                if 'validDate' in vriInfo:
-                    row.append(QStandardItem(vriInfo['validDate']))
-                else:
-                    row.append(QStandardItem("Бессрочно"))
-                cert_num = vriInfo['applicable']['certNum']
-                row.append(QStandardItem(cert_num))
-                row.append(QStandardItem("ГОДЕН"))
-            elif 'inapplicable' in vriInfo and 'noticeNum' in vriInfo['inapplicable']:
-                row.append(QStandardItem("-"))
-                cert_num = vriInfo['inapplicable']['noticeNum']
-                row.append(QStandardItem(cert_num))
-                row.append(QStandardItem("БРАК"))
-
-            if 'organization' in vriInfo:
-                if "(" in vriInfo['organization']:
-                    organization = str(vriInfo['organization'])[str(vriInfo['organization']).find("(") + 1:-1]
-                else:
-                    organization = str(vriInfo['organization'])
-            row.append(QStandardItem(organization))
-
-            if 'signCipher' in vriInfo:
-                signCipher = vriInfo['signCipher']
-            if 'miOwner' in vriInfo:
-                miOwner = vriInfo['miOwner']
-            if 'vrfDate' in vriInfo:
-                vrfDate = vriInfo['vrfDate']
-            if 'validDate' in vriInfo:
-                validDate = vriInfo['validDate']
-            if 'vriType' in vriInfo:
-                if str(vriInfo['vriType']) == "2":
-                    vriType = "периодическая"
-                elif str(vriInfo['vriType']) == "1":
-                    vriType = "первичная"
-            if 'docTitle' in vriInfo:
-                docTitle = vriInfo['docTitle']
-            if 'applicable' in vriInfo:
-                applicable = "1"
-                if 'stickerNum' in vriInfo['applicable']:
-                    stickerNum = vriInfo['applicable']['stickerNum']
-                if 'signPass' in vriInfo['applicable'] and vriInfo['applicable']['signPass']:
-                    signPass = "1"
-                if 'signMi' in vriInfo['applicable'] and vriInfo['applicable']['signMi']:
-                    signMi = "1"
-            if 'inapplicable' in vriInfo:
-                applicable = "0"
-
-            if 'info' in self.vri['result']:
-                info = self.vri['result']['info']
-                if 'structure' in info:
-                    structure = info['structure']
-                if 'briefIndicator' in info and info['briefIndicator']:
-                    briefIndicator = "1"
-                if 'briefCharacteristics' in info:
-                    briefCharacteristics = info['briefCharacteristics']
-                if 'ranges' in info:
-                    ranges = info['ranges']
-                if 'values' in info:
-                    values = info['values']
-                if 'channels' in info:
-                    channels = info['channels']
-                if 'blocks' in info:
-                    blocks = info['blocks']
-                if 'additional_info' in info:
-                    additional_info = info['additional_info']
-
-            if self.mieta and 'result' in self.mieta:
-                result = self.mieta['result']
-                if 'number' in result:
-                    regNumber = result['number']
-                if 'rankcode' in result:
-                    rankСоdе = result['rankcode']
-                if 'rankclass' in result:
-                    rankTitle = result['rankclass']
-                if 'npenumber' in result:
-                    npenumber = result['npenumber']
-                if 'schematype' in result:
-                    schematype = result['schematype']
-                if 'schematitle' in result:
-                    schemaTitle = result['schematitle']
-                self.mieta.clear()
-            elif 'miInfo' in self.vri['result'] and 'etaMI' in self.vri['result']['miInfo']:
-                etaMI = self.vri['result']['miInfo']['etaMI']
-                if 'regNumber' in etaMI:
-                    regNumber = etaMI['regNumber']
-                if 'rankСоdе' in etaMI:
-                    rankСоdе = etaMI['rankСоdе']
-                if 'rankTitle' in etaMI:
-                    rankTitle = etaMI['rankTitle']
-                if 'schemaTitle' in etaMI:
-                    schemaTitle = etaMI['schemaTitle']
-
-            if rankTitle and schemaTitle and regNumber:
-                row.append(QStandardItem(f"{rankTitle}\n{regNumber}: {schemaTitle}"))
+            # формируем строку "эталон"
+            rankTitle = self.temp_vri_dict[cert_number]['rankTitle']
+            regNumber = self.temp_vri_dict[cert_number]['regNumber']
+            if rankTitle and regNumber:
+                vri_mieta = f"{regNumber}: {rankTitle.lower()}"
             else:
-                row.append(QStandardItem("-"))
-            self.tbl_vri_model.insertRow(0, row)
+                vri_mieta = "нет"
+            self.mieta.clear()
 
-            if cert_num:
-                self.temp_vri_dict[cert_num] = {'organization': organization,
-                                                'signCipher': signCipher,
-                                                'miOwner': miOwner,
-                                                'vrfDate': vrfDate,
-                                                'validDate': validDate,
-                                                'vriType': vriType,
-                                                'docTitle': docTitle,
-                                                'applicable': applicable,
-                                                'certNum': cert_num,
-                                                'stickerNum': stickerNum,
-                                                'signPass': signPass,
-                                                'signMi': signMi,
-                                                'inapplicable_reason': "",
-                                                'structure': structure,
-                                                'briefIndicator': briefIndicator,
-                                                'briefCharacteristics': briefCharacteristics,
-                                                'ranges': ranges,
-                                                'values': values,
-                                                'channels': channels,
-                                                'blocks': blocks,
-                                                'additional_info': additional_info,
-                                                'info': "",
-                                                'regNumber': regNumber,
-                                                'rankСоdе': rankСоdе,
-                                                'rankTitle': rankTitle,
-                                                'npenumber': npenumber,
-                                                'schematype': schematype,
-                                                'schemaTitle': schemaTitle}
+            # проверяем есть ли уже такая поверка в таблице
+            cur_vri_tuple = (self.temp_vri_dict[cert_number]['vrfDate'], cert_number, regNumber)
+            if self.number in self.set_of_vri_id:
+                QMessageBox.information(self, "Ошибка", "Данная поверка уже добавлена")
+            else:
+                row = list()
+                row.append(QStandardItem(self.temp_vri_dict[cert_number]['vrfDate']))
+                row.append(QStandardItem(self.temp_vri_dict[cert_number]['validDate']))
+                row.append(QStandardItem(self.temp_vri_dict[cert_number]['certNum']))
+                row.append(QStandardItem(result))
+                row.append(QStandardItem(self.temp_vri_dict[cert_number]['organization']))
+                row.append(QStandardItem(vri_mieta))
+                row.append(QStandardItem(""))
+                self.tbl_vri_model.appendRow(row)
+                self._update_vri_table()
 
             index = self.tbl_vri_proxy_model.mapFromSource(self.tbl_vri_model.index(0, 2))
             self.ui.tableView_vri_list.setCurrentIndex(index)
@@ -1720,58 +1740,131 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
             # ЕСЛИ ИЩЕМ ПО НОМЕРУ ЭТАЛОНА, ТО УДАЛЯЕМ ПЕРВУЮ ПОВЕРКУ И ИЩЕМ СЛЕДУЮЩУЮ
             if self.eq_type == "mieta":
-                del self.vri_numbers[0]
-                if len(self.vri_numbers) > 0:
+                if len(self.temp_set_of_vri_id) > 0:
+                    if QMessageBox.question(self, "Найдена поверка",
+                                            f"Найдена еще одна поверка. Хотите добавить информацию о ней?") == 65536:
+                        self._on_search_finished()
+                        return
                     self._update_progressbar(95, "Поиск информации о поверках")
-                    url = f"{URL_START}/vri/{self.vri_numbers[0][0]}"
+                    self.number = self.temp_set_of_vri_id.pop()
+                    url = f"{URL_START}/vri/{self.number}"
                     self.search_thread.url = url
                     self.search_thread.start()
                     return
             else:
                 # ЕСЛИ ИЩЕМ ПО НОМЕРУ СВИДЕТЕЛЬСТВА И ОДНА ПОВЕРКА, ОЧИЩАЕМ СПИСОК
-                if len(self.vri_numbers) == 1:
-                    self.vri_numbers.clear()
+                if len(self.temp_set_of_vri_id) == 1:
+                    self.temp_set_of_vri_id.clear()
                 # ЕСЛИ БОЛЬШЕ ОДНОЙ ПОВЕРКИ, ТО УДАЛЯЕМ ЗАПИСАННУЮ И ИЩЕМ СЛЕДУЮЩУЮ
-                for vri in self.vri_numbers:
-                    if self.vri_search and self.vri_search['result']['items'][0]['vri_id'] in vri:
-                        self.vri_numbers.remove(vri)
-                    elif self.number in vri:
-                        self.vri_numbers.remove(vri)
-                if len(self.vri_numbers) > 0:
+                if self.vri_search and self.vri_search['result']['items'][0]['vri_id'] in self.temp_set_of_vri_id:
+                    self.temp_set_of_vri_id.remove(self.vri_search['result']['items'][0]['vri_id'])
+                elif self.number in self.temp_set_of_vri_id:
+                    self.temp_set_of_vri_id.remove(self.number)
+                if len(self.temp_set_of_vri_id) > 0:
+                    if QMessageBox.question(self, "Найдена поверка",
+                                            "Найдена еще одна поверка. Хотите добавить информацию о ней?") == 65536:
+                        self._on_search_finished()
+                        return
                     self._update_progressbar(95, "Поиск информации о поверках")
-                    url = f"{URL_START}/vri/{self.vri_numbers[0][0]}"
+                    self.number = self.temp_set_of_vri_id.pop()
+                    url = f"{URL_START}/vri/{self.number}"
                     self.search_thread.url = url
                     self.search_thread.start()
                     return
+                else:
+                    self._fill_mi_info()
             self._on_search_finished()
 
     # ----------------------------------------ЗАВЕРШЕНИЕ ПОИСКА--------------------------------------------------------
     def _on_search_finished(self):
-        self.eq_type = ""
-        self.get_type = ""
+        # if (mitypeTitle, modification, manufactureNum) in self.set_of_mi:
+        #     if QMessageBox.question(self, "Внимание!",
+        #                             f"Похожее оборудование - '{mitypeTitle} {modification} № {manufactureNum}' "
+        #                             f"уже записано!\n"
+        #                             f"Сохранение найденных результатов приведет к дублированию записи!"
+        #                             f"Хотите просмотреть информацию о сохраненном оборудовании?") != 65536:
+        #         mi_id = func.get_mi_id_from_set_of_mi((mitypeTitle, modification, manufactureNum), self.mi_dict)
+        #         self._on_search_stopped()
+        #         row = self.tbl_mi_model.indexFromItem(self.tbl_mi_model.findItems(mi_id, column=5)[0]).row()
+        #         index = self.tbl_mi_model.index(row, 0)
+        #         self.ui.tableView_mi_list.setCurrentIndex(index)
+        #         self.ui.tableView_mi_list.scrollTo(index)
+        #         self._on_mi_select(index)
+        #         return
+        print("finished")
         self.dialog.setLabelText("Поиск завершен. Данные внесены в форму.")
         self.dialog.setValue(100)
         self.dialog.setCancelButtonText("Готово")
+        self.dialog.canceled.disconnect()
+        self.dialog.canceled.connect(self._check_duplicates)
+        self._clear_search_vars()
         self._update_vri_table()
+
+    # ------------------------------------ПРОВЕРКА НАЛИЧИЯ ТАКОЙ ЖЕ ЗАПИСИ---------------------------------------------
+    def _check_duplicates(self):
+        self.dialog.canceled.disconnect()
+        self.dialog.close()
+        mitypeTitle = self.ui.plainTextEdit_title.toPlainText()
+        modification = self.ui.lineEdit_modification.text()
+        manufactureNum = self.ui.lineEdit_number.text()
+        if mitypeTitle and modification and manufactureNum:
+            if (mitypeTitle, modification, manufactureNum) in self.set_of_mi:
+                if QMessageBox.question(self, "Внимание!",
+                                        f"Похожее оборудование - '{mitypeTitle} {modification} № {manufactureNum}' "
+                                        f"уже записано!\n"
+                                        f"Сохранение найденных результатов приведет к дублированию записи!"
+                                        f"Хотите просмотреть информацию о сохраненном оборудовании?") != 65536:
+                    mi_id = func.get_mi_id_from_set_of_mi((mitypeTitle, modification, manufactureNum), self.mi_dict)
+                    row = self.tbl_mi_model.indexFromItem(self.tbl_mi_model.findItems(mi_id, column=5)[0]).row()
+                    index = self.tbl_mi_model.index(row, 0)
+                    self.ui.tableView_mi_list.setCurrentIndex(index)
+                    self.ui.tableView_mi_list.scrollTo(index)
+                    self._on_mi_select(index)
+                    return
 
     # ---------------------------------------------ОСТАНОВКА ПОИСКА----------------------------------------------------
     def _on_search_stopped(self):
+        print("stopped")
         self.search_thread.is_running = False
-        self.eq_type = ""
-        self.get_type = ""
         self.ui.tableView_mi_list.selectionModel().clearSelection()
+        self._clear_search_vars()
+        self.dialog.canceled.disconnect()
+        self.dialog.close()
+
+    # -----------------------------------------ОЧИЩАЕМ ПЕРЕМЕННЫЕ ПОИСКА-----------------------------------------------
+    def _clear_search_vars(self):
         self.mit_search.clear()
         self.mit.clear()
         self.vri_search.clear()
         self.vri.clear()
         self.mieta_search.clear()
         self.mieta.clear()
-        self.vri_numbers.clear()
+        self.temp_set_of_vri_id.clear()
 
     # ----------------------------------------ОБНОВЛЕНИЕ ПРОГРЕССА ПОИСКА----------------------------------------------
     def _update_progressbar(self, val, text):
         self.dialog.setLabelText(text)
         self.dialog.setValue(val)
+
+    def _get_measure_code_id(self):
+        if self.ui.comboBox_measure_subcode.currentIndex() != 0:
+            measure_code_id = self.ui.comboBox_measure_subcode.currentText()[:4]
+        else:
+            if self.ui.comboBox_measure_code.currentIndex() != 0:
+                measure_code_id = self.ui.comboBox_measure_code.currentText()[:2]
+            else:
+                measure_code_id = "0"
+        return measure_code_id
+
+    def _get_measure_code_name(self):
+        if "Не определено" not in self.ui.comboBox_measure_subcode.currentText():
+            measure_code_name = self.ui.comboBox_measure_subcode.currentText()[5:]
+        else:
+            if "Не определено" not in self.ui.comboBox_measure_code.currentText():
+                measure_code_name = self.ui.comboBox_measure_code.currentText()[3:]
+            else:
+                measure_code_name = ""
+        return measure_code_name
 
 
 class CustomSortingModel(QSortFilterProxyModel):

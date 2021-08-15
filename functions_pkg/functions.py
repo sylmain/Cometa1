@@ -223,78 +223,94 @@ def get_room_number_from_id(room, room_dict):
 
 
 def get_measure_codes():
-    measure_codes = dict()
+    measure_codes_dict = dict()
+    measure_codes_list = list()
+    measure_sub_codes_dict = dict()
     sql_select = "SELECT * FROM measure_codes ORDER BY measure_code"
     MySQLConnection.verify_connection()
     connection = MySQLConnection.create_connection()
     result = MySQLConnection.execute_read_query(connection, sql_select)
     connection.close()
     for code in result:
-        measure_codes[str(code[0])] = {'code': code[1], 'name': code[2]}
-    return {'measure_codes_dict': measure_codes}
+        measure_codes_dict[code[0]] = code[1]
+        if len(code[0]) < 4:
+            measure_codes_list.append(f"{code[0]} {code[1]}")
+        else:
+            measure_code = code[0][:2]
+            if measure_code not in measure_sub_codes_dict:
+                measure_sub_codes_dict[measure_code] = list()
+                measure_sub_codes_dict[measure_code].append(f"{code[0]} {code[1]}")
+            else:
+                measure_sub_codes_dict[measure_code].append(f"{code[0]} {code[1]}")
+    return {'measure_codes_dict': measure_codes_dict, 'measure_codes_list': measure_codes_list,
+            'measure_sub_codes_dict': measure_sub_codes_dict}
 
 
-def get_measure_code_id_from_name(name, measure_codes_dict):
-    for code in measure_codes_dict:
-        if name == f"{measure_codes_dict[code]['code']} {measure_codes_dict[code]['name']}":
+def get_measure_code_id_from_name(name, measure_codes):
+    for code in measure_codes['measure_codes_dict']:
+        if name == measure_codes['measure_codes_dict'][code]:
             return code
     return "0"
 
 
-def get_measure_code_name_from_id(id, measure_codes_dict):
-    if id in measure_codes_dict:
-        return f"{measure_codes_dict[id]['code']} {measure_codes_dict[id]['name']}"
-    return ""
-
-
-def get_measure_code_from_id(id, measure_codes_dict):
-    if id in measure_codes_dict:
-        return f"{measure_codes_dict[id]['code']}"
+def get_measure_code_name_from_id(code_id, measure_codes):
+    if code_id in measure_codes['measure_codes_dict']:
+        return measure_codes['measure_codes_dict'][code_id]
     return ""
 
 
 def get_mis():
-    mis_dict = dict()
+    mi_dict = dict()
+    set_of_mi = set()
     sql_select = "SELECT * FROM mis ORDER BY mi_measure_code"
     MySQLConnection.verify_connection()
     connection = MySQLConnection.create_connection()
     result = MySQLConnection.execute_read_query(connection, sql_select)
     connection.close()
     for mi in result:
-        mis_dict[str(mi[0])] = {'reg_card_number': mi[1],
-                                'measure_code': str(mi[2]),
-                                'status': mi[3],
-                                'reestr': mi[4],
-                                'title': mi[5],
-                                'type': mi[6],
-                                'modification': mi[7],
-                                'number': mi[8],
-                                'inv_number': mi[9],
-                                'manufacturer': mi[10],
-                                'manuf_year': mi[11],
-                                'expl_year': mi[12],
-                                'diapazon': mi[13],
-                                'PG': mi[14],
-                                'KT': mi[15],
-                                'other_characteristics': mi[16],
-                                'MPI': mi[17],
-                                'purpose': mi[18],
-                                'responsible_person': str(mi[19]),
-                                'personal': mi[20],
-                                'room': str(mi[21]),
-                                'software_inner': mi[22],
-                                'software_outer': mi[23],
-                                'RE': str(mi[24]),
-                                'pasport': str(mi[25]),
-                                'MP': str(mi[26]),
-                                'TO_period': mi[27],
-                                'owner': mi[28],
-                                'owner_contract': mi[29]}
+        mi_dict[str(mi[0])] = {'reg_card_number': mi[1],
+                               'measure_code': str(mi[2]),
+                               'status': mi[3],
+                               'reestr': mi[4],
+                               'title': mi[5],
+                               'type': mi[6],
+                               'modification': mi[7],
+                               'number': mi[8],
+                               'inv_number': mi[9],
+                               'manufacturer': mi[10],
+                               'manuf_year': mi[11],
+                               'expl_year': mi[12],
+                               'diapazon': mi[13],
+                               'PG': mi[14],
+                               'KT': mi[15],
+                               'other_characteristics': mi[16],
+                               'MPI': mi[17],
+                               'purpose': mi[18],
+                               'responsible_person': str(mi[19]),
+                               'personal': mi[20],
+                               'room': str(mi[21]),
+                               'software_inner': mi[22],
+                               'software_outer': mi[23],
+                               'RE': str(mi[24]),
+                               'pasport': str(mi[25]),
+                               'MP': str(mi[26]),
+                               'TO_period': mi[27],
+                               'owner': mi[28],
+                               'owner_contract': mi[29]}
+        set_of_mi.add((mi[5], mi[7], mi[8]))
 
-    return {'mis_dict': mis_dict, 'reserve': 'reserve'}
+    return {'mi_dict': mi_dict, 'set_of_mi': set_of_mi, 'reserve': 'reserve'}
 
 
-def get_mis_id_from_card_number(card_number, mis_dict):
+def get_mi_id_from_set_of_mi(cur_tuple, mi_dict):
+    for mi_id in mi_dict:
+        if mi_dict[mi_id]['title'] == cur_tuple[0] and mi_dict[mi_id]['modification'] == cur_tuple[1] and \
+                mi_dict[mi_id]['number'] == cur_tuple[2]:
+            return mi_id
+    return ""
+
+
+def get_mi_id_from_card_number(card_number, mis_dict):
     for mis_id in mis_dict:
         if mis_dict[mis_id]['reg_card_number'] == card_number:
             return mis_id
@@ -377,7 +393,8 @@ def get_mis_vri_info():
                      'channels': vri_info[20],
                      'blocks': vri_info[21],
                      'additional_info': vri_info[22],
-                     'info': vri_info[23]}
+                     'info': vri_info[23],
+                     'FIF_id': vri_info[24]}
         if str(vri_info[1]) not in mis_vri_dict:
             mis_vri_dict[str(vri_info[1])] = dict()
             mis_vri_dict[str(vri_info[1])][str(vri_info[0])] = temp_dict
