@@ -45,7 +45,7 @@
            <enum>QTabWidget::Rounded</enum>
           </property>
           <property name="currentIndex">
-           <number>0</number>
+           <number>2</number>
           </property>
           <widget class="QWidget" name="tab_mi_info">
            <attribute name="title">
@@ -1649,6 +1649,12 @@
                  </item>
                  <item>
                   <widget class="QLabel" name="label_13">
+                   <property name="minimumSize">
+                    <size>
+                     <width>50</width>
+                     <height>0</height>
+                    </size>
+                   </property>
                    <property name="text">
                     <string>Годен до</string>
                    </property>
@@ -1672,6 +1678,12 @@
                  </item>
                  <item>
                   <widget class="QLabel" name="label_14">
+                   <property name="minimumSize">
+                    <size>
+                     <width>70</width>
+                     <height>0</height>
+                    </size>
+                   </property>
                    <property name="text">
                     <string>Тип поверки</string>
                    </property>

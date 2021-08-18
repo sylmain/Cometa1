@@ -1,3 +1,10 @@
+from PyQt5.QtCore import QSettings, QRegExp
+from global_vars import Globals
+
+SETTINGS = QSettings(Globals.settings_path_string, QSettings.IniFormat)
+SETTINGS.setIniCodec("UTF-8")
+
+
 def get_temp_vri_dict(vri_resp, mieta_resp):
     cert_num = ""
     vri_dict = dict()
@@ -32,7 +39,6 @@ def get_temp_vri_dict(vri_resp, mieta_resp):
         schemaTitle = ""
         npenumber = ""
         schematype = ""
-        FIF_id = ""
 
         if 'organization' in vriInfo:
             if "(" in vriInfo['organization']:
@@ -145,10 +151,12 @@ def get_temp_vri_dict(vri_resp, mieta_resp):
 
 
 # СЛОВАРЬ ДЛЯ ЗАПОЛНЕНИЯ ОБЩИХ ДАННЫХ О СИ
-def get_mi_dict(mit_resp=None, vri_resp=None):
+def get_mi_dict(mit_resp=None, vri_resp=None, mieta_resp=None):
     number = notation = manufacturer = MPI = ""
     hasMPI = True
-    title = manufactureNum = inventoryNum = manufactureYear = modification = ""
+    title = manufactureNum = inventoryNum = manufactureYear = modification = quantity = ""
+
+    # ЕСЛИ ПОИСК ПО vri
     if vri_resp:
         if 'result' in vri_resp and 'miInfo' in vri_resp['result']:
             miInfo = vri_resp['result']['miInfo']
@@ -170,6 +178,8 @@ def get_mi_dict(mit_resp=None, vri_resp=None):
             if 'modification' in miInfo:
                 modification = miInfo['modification']
                 notation = modification
+            if 'quantity' in miInfo:
+                quantity = f"Количество: {str(miInfo['quantity'])}"
             # вычисляем межповерочный интервал по датам поверки
             if 'vriInfo' in vri_resp['result']:
                 vriInfo = vri_resp['result']['vriInfo']
@@ -177,6 +187,20 @@ def get_mi_dict(mit_resp=None, vri_resp=None):
                     start_date = vriInfo['vrfDate']
                     end_date = vriInfo['validDate']
                     MPI = str((int(end_date[-4:]) - int(start_date[-4:])) * 12)
+
+    # ЕСЛИ ПОИСК ПО mieta
+    elif mieta_resp:
+        if 'result' in mieta_resp:
+            result = mieta_resp['result']
+
+            if 'mitype' in result:
+                title = result['mitype']
+            if 'factory_num' in result:
+                manufactureNum = result['factory_num']
+            if 'year' in result:
+                manufactureYear = str(result['year'])
+            if 'modification' in result:
+                modification = result['modification']
 
     # ЕСЛИ СИ В РЕЕСТРЕ
     if mit_resp:
@@ -217,6 +241,7 @@ def get_mi_dict(mit_resp=None, vri_resp=None):
                 'notation': notation,
                 'modification': modification,
                 'inventoryNum': inventoryNum,
+                'quantity': quantity,
                 'manufacturer': manufacturer,
                 'manufactureYear': manufactureYear,
                 'MPI': MPI,
@@ -240,5 +265,45 @@ def get_temp_set_of_vri_from_mieta(mieta_resp):
                 if 'vri_id' in cresult:
                     vri_id = cresult['vri_id']
                 set_of_vri.add((mieta_vrf_date, mieta_cert_number, mieta_number))
-    print(set_of_vri)
+    # print(set_of_vri)
     return set_of_vri
+
+
+def get_next_card_number(list_of_card_numbers, new_meas_code="", new_sub_meas_code=""):
+    format_line = str(SETTINGS.value("format/equipment_reg_card_number"))
+
+    # определяем разрядность порядкового номера и первое вхождение
+    digit_count = str(format_line).count("N")
+    digit_start = format_line.find("N")
+    # создаем регулярное выражение
+    rx_string = format_line.replace("MM", new_meas_code)
+    rx_string = rx_string.replace("SS", new_sub_meas_code)
+    rx_string = rx_string.replace("N" * digit_count, "\d{" + str(digit_count) + "}")
+    rx = QRegExp(f"^{rx_string}$")
+    print(rx_string)
+
+    new_number = 1
+    new_number_string = ""
+
+    # создаем текущий список сохраненных таких же видов измерений (только порядковые номера) и сортируем его
+    order_numbers = list()
+    for meas_code in list_of_card_numbers:
+        if rx.indexIn(meas_code) == 0:
+            order_numbers.append(int(str(meas_code)[digit_start:(digit_start + digit_count)]))
+    order_numbers.sort()
+    print(digit_start, digit_start + digit_count)
+    print(order_numbers)
+
+    # если список не пустой, берем номер, следующий за последним
+    if order_numbers:
+        new_number = order_numbers[len(order_numbers) - 1] + 1
+
+    # записываем новый номер в заданный пользователем формат
+    new_number_string = str(format_line).replace("MM", new_meas_code)
+    new_number_string = new_number_string.replace("SS", new_sub_meas_code)
+    temp_str = ""
+    for i in range(digit_count):
+        temp_str = f"{temp_str}N"
+    cur_number_string = new_number_string.replace(temp_str, str(new_number - 1).rjust(digit_count, '0'))
+    new_number_string = new_number_string.replace(temp_str, str(new_number).rjust(digit_count, '0'))
+    return new_number_string, cur_number_string

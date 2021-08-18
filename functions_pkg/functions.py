@@ -262,6 +262,7 @@ def get_measure_code_name_from_id(code_id, measure_codes):
 def get_mis():
     mi_dict = dict()
     set_of_mi = set()
+    list_of_card_numbers = list()
     sql_select = "SELECT * FROM mis ORDER BY mi_measure_code"
     MySQLConnection.verify_connection()
     connection = MySQLConnection.create_connection()
@@ -298,8 +299,10 @@ def get_mis():
                                'owner': mi[28],
                                'owner_contract': mi[29]}
         set_of_mi.add((mi[5], mi[7], mi[8]))
+        list_of_card_numbers.append(mi[1])
 
-    return {'mi_dict': mi_dict, 'set_of_mi': set_of_mi, 'reserve': 'reserve'}
+    return {'mi_dict': mi_dict, 'set_of_mi': set_of_mi, 'list_of_card_numbers': list_of_card_numbers,
+            'reserve': 'reserve'}
 
 
 def get_mi_id_from_set_of_mi(cur_tuple, mi_dict):
@@ -438,3 +441,53 @@ def comma_to_dot(string):
 
 def dot_to_comma(string):
     return string.replace(".", ",")
+
+
+def get_max_substring(str_1, str_2):
+    SZ = int(1e5 + 4)
+    hashpow = 137
+    mod = int(1e9 + 7)
+    p = [1]
+    for i in range(SZ):
+        p.append(p[-1] * hashpow % mod)
+
+    def build_hash(s):
+        h = [0]
+        for c in s:
+            h.append(h[-1] * hashpow + ord(c))
+            h[-1] %= mod
+        return h
+
+    h1 = build_hash(str_1)
+    h2 = build_hash(str_2)
+
+    def get_hash(h, l, r):
+        return (h[r] - h[l - 1] * p[r - l + 1] % mod + mod) % mod
+
+    def get(m):
+        d = {}
+        for i in range(len(str_1) - m + 1):
+            d[get_hash(h1, i + 1, i + m)] = i
+        for i in range(len(str_2) - m + 1):
+            hsh = get_hash(h2, i + 1, i + m)
+            if hsh in d:
+                return (d[hsh], i)
+        return (-1, -1)
+
+    lo = 0
+    hi = SZ + 1
+    while hi - lo > 1:
+        m = lo + (hi - lo) // 2
+        if get(m) != (-1, -1):
+            lo = m
+        else:
+            hi = m
+    # print(str_1[get(lo)[0]:get(lo)[0] + lo])
+    # print(str_2[get(lo)[1]:get(lo)[1] + lo])
+    # print(lo, get(lo))
+    return lo, get(lo)[0], get(lo)[1]
+
+
+a = """проверка"""
+b = """ъорошпроверровл"""
+print(get_max_substring(a, b))
