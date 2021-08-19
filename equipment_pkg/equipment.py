@@ -5,11 +5,12 @@ from PyQt5.QtCore import QRegExp, QThread, pyqtSignal, Qt, QStringListModel, QEv
     QItemSelectionModel, pyqtSlot, QSettings
 from PyQt5.QtGui import QStandardItemModel, QStandardItem, QCloseEvent
 from PyQt5.QtWidgets import QApplication, QMainWindow, QInputDialog, QDialog, QMessageBox, QProgressDialog, \
-    QAbstractItemView, QPushButton
+    QAbstractItemView, QPushButton, QMdiSubWindow
 from functions_pkg.send_get_request import GetRequest
 from equipment_pkg.ui_equipment import Ui_MainWindow
 from functions_pkg.db_functions import MySQLConnection
 import functions_pkg.functions as func
+from equipment_pkg.equipment_import import EquipmentImportWidget
 from equipment_pkg.equipment_functions import *
 
 # from equipment_pkg.equipment_requests import send_request
@@ -108,11 +109,9 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.mi_dict = func.get_mis()['mi_dict']
         self.set_of_mi = func.get_mis()['set_of_mi']
         self.list_of_card_numbers = func.get_mis()['list_of_card_numbers']
-        print(self.list_of_card_numbers)
         self.mi_deps = func.get_mi_deps()['mi_deps_dict']
         self.mis_vri_dict = func.get_mis_vri_info()['mis_vri_dict']
         self.mietas_dict = func.get_mietas()['mietas_dict']
-        # print(self.set_of_mi)
 
     def _add_measure_codes(self):
         self.ui.comboBox_measure_code.addItems(["- Не определено"])
@@ -171,18 +170,16 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             new_sub_meas_code = ""
         else:
             new_sub_meas_code = self.ui.comboBox_measure_subcode.currentText()[2:4]
-        # если нет подвида и вида, выходим
+        # если нет подвида и вида, записываем сохраненный номер и выходим
         if not new_meas_code and not new_sub_meas_code:
             self.ui.lineEdit_reg_card_number.setText(cur_card_number)
             return
-        # новый номер карточки
-        new_number_string = get_next_card_number(self.list_of_card_numbers, new_meas_code, new_sub_meas_code)[0]
-        # предыдущий номер карточки (на один меньше нового)
-        prev_number_string = get_next_card_number(self.list_of_card_numbers, new_meas_code, new_sub_meas_code)[1]
+        # новый номер карточки и предыдущий номер карточки (на один меньше нового)
+        new_number_string, prev_number_string = get_next_card_number(self.list_of_card_numbers, new_meas_code,
+                                                                     new_sub_meas_code)
+        # prev_number_string = get_next_card_number(self.list_of_card_numbers, new_meas_code, new_sub_meas_code)[1]
+
         # если выбран первоначальный (сохраненный) вид измерений, то записываем значение из словаря
-        print(prev_number_string)
-        print(new_number_string)
-        print(cur_card_number)
         if prev_number_string == cur_card_number:
             self.ui.lineEdit_reg_card_number.setText(cur_card_number)
             return
@@ -191,11 +188,9 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             self.ui.lineEdit_reg_card_number.setText(new_number_string)
 
     def _on_import(self):
-        wb = load_workbook(filename='./equipment.xlsx')
-        sheet = wb['Лист1']
-        count = sheet.max_row
-        for i in range(1, count + 1):
-            print(sheet[f"A{i}"].value)
+        self.widget = EquipmentImportWidget()
+        self.widget.setWindowModality(Qt.ApplicationModal)
+        self.widget.show()
 
     # ---------------------------------------------ВНЕШНИЙ ВИД ПРИ СТАРТЕ----------------------------------------------
     def _appearance_init(self):

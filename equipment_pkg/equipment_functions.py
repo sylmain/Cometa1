@@ -280,10 +280,8 @@ def get_next_card_number(list_of_card_numbers, new_meas_code="", new_sub_meas_co
     rx_string = rx_string.replace("SS", new_sub_meas_code)
     rx_string = rx_string.replace("N" * digit_count, "\d{" + str(digit_count) + "}")
     rx = QRegExp(f"^{rx_string}$")
-    print(rx_string)
 
     new_number = 1
-    new_number_string = ""
 
     # создаем текущий список сохраненных таких же видов измерений (только порядковые номера) и сортируем его
     order_numbers = list()
@@ -291,8 +289,6 @@ def get_next_card_number(list_of_card_numbers, new_meas_code="", new_sub_meas_co
         if rx.indexIn(meas_code) == 0:
             order_numbers.append(int(str(meas_code)[digit_start:(digit_start + digit_count)]))
     order_numbers.sort()
-    print(digit_start, digit_start + digit_count)
-    print(order_numbers)
 
     # если список не пустой, берем номер, следующий за последним
     if order_numbers:

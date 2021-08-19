@@ -490,4 +490,4 @@ def get_max_substring(str_1, str_2):
 
 a = """проверка"""
 b = """ъорошпроверровл"""
-print(get_max_substring(a, b))
+# print(get_max_substring(a, b))

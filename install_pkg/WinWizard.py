@@ -187,6 +187,7 @@ class Wizard(QWizard):
         ini_path = QDir.drives()[self.field("drive")].path() + "Cometa/settings/index.ini"
         settings = QSettings(ini_path, QSettings.IniFormat)
         settings.setValue("paths/ini_path", ini_path)
+        settings.setValue("paths/cometa_path", QDir.drives()[self.field("drive")].path() + "Cometa")
         settings.setValue("connect/host", self.field("host"))
         settings.setValue("connect/port", self.field("port"))
         settings.setValue("connect/user", self.field("user"))
