@@ -242,6 +242,9 @@ def get_measure_codes():
                 measure_sub_codes_dict[measure_code].append(f"{code[0]} {code[1]}")
             else:
                 measure_sub_codes_dict[measure_code].append(f"{code[0]} {code[1]}")
+    print(measure_codes_dict)
+    print(measure_sub_codes_dict)
+    print(measure_codes_list)
     return {'measure_codes_dict': measure_codes_dict, 'measure_codes_list': measure_codes_list,
             'measure_sub_codes_dict': measure_sub_codes_dict}
 

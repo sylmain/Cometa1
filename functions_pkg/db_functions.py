@@ -3,7 +3,7 @@ from PyQt5.QtCore import QSettings
 from PyQt5.QtWidgets import QMessageBox, QPushButton
 from mysql.connector import Error
 
-from global_vars import Globals
+from GLOBAL_VARS import *
 
 
 class MySQLConnection:
@@ -12,11 +12,11 @@ class MySQLConnection:
     def create_connection():
         connection = None
         if MySQLConnection.is_settings_file_exists():
-            settings = QSettings(Globals.settings_path_string, QSettings.IniFormat)
-            host = settings.value("connect/host")
-            port = settings.value("connect/port")
-            user = settings.value("connect/user")
-            pwd = settings.value("connect/pwd")
+            # settings = QSettings(Globals.settings_path_string, QSettings.IniFormat)
+            host = SETTINGS.value("connect/host")
+            port = SETTINGS.value("connect/port")
+            user = SETTINGS.value("connect/user")
+            pwd = SETTINGS.value("connect/pwd")
             db_name = 'cometa'
             try:
                 connection = mysql.connector.connect(
@@ -35,11 +35,11 @@ class MySQLConnection:
     @staticmethod
     def is_db_connected():
         if MySQLConnection.is_settings_file_exists():
-            settings = QSettings(Globals.settings_path_string, QSettings.IniFormat)
-            host = settings.value("connect/host")
-            port = settings.value("connect/port")
-            user = settings.value("connect/user")
-            pwd = settings.value("connect/pwd")
+            # settings = QSettings(Globals.settings_path_string, QSettings.IniFormat)
+            host = SETTINGS.value("connect/host")
+            port = SETTINGS.value("connect/port")
+            user = SETTINGS.value("connect/user")
+            pwd = SETTINGS.value("connect/pwd")
             db_name = "cometa"
             try:
                 connection = mysql.connector.connect(
@@ -126,8 +126,8 @@ class MySQLConnection:
 
     @staticmethod
     def is_settings_file_exists():
-        settings_dir = Globals.settings_dir
-        if not settings_dir.exists("index.ini"):
+        # settings_dir = Globals.settings_dir
+        if not SETTINGS_DIR.exists("index.ini"):
             return False
         else:
             return True

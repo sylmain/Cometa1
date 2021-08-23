@@ -2,7 +2,7 @@ import mysql.connector
 from PyQt5.QtCore import QStorageInfo, QDir
 from mysql.connector import Error
 
-from global_vars import Globals
+from GLOBAL_VARS import Globals
 
 glob = Globals()
 

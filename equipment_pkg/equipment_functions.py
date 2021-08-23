@@ -1,8 +1,6 @@
 from PyQt5.QtCore import QSettings, QRegExp
-from global_vars import Globals
+from GLOBAL_VARS import *
 
-SETTINGS = QSettings(Globals.settings_path_string, QSettings.IniFormat)
-SETTINGS.setIniCodec("UTF-8")
 
 
 def get_temp_vri_dict(vri_resp, mieta_resp):

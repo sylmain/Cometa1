@@ -8,11 +8,11 @@ from openpyxl import load_workbook
 
 from equipment_pkg.ui_equipment_import import Ui_Form
 from functions_pkg.send_get_request import GetRequest
-from global_vars import Globals
+from GLOBAL_VARS import *
 
-SETTINGS = QSettings(Globals.settings_path_string, QSettings.IniFormat)
-SETTINGS.setIniCodec("UTF-8")
-URL_START = "https://fgis.gost.ru/fundmetrology/eapi"
+# SETTINGS = QSettings(Globals.settings_path_string, QSettings.IniFormat)
+# SETTINGS.setIniCodec("UTF-8")
+# URL_START = "https://fgis.gost.ru/fundmetrology/eapi"
 
 
 class SearchThread(QThread):
