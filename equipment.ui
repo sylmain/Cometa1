@@ -31,7 +31,7 @@
         <rect>
          <x>0</x>
          <y>0</y>
-         <width>611</width>
+         <width>695</width>
          <height>1106</height>
         </rect>
        </property>
@@ -1638,12 +1638,22 @@
                   </widget>
                  </item>
                  <item>
-                  <widget class="QLineEdit" name="lineEdit_vrfDate">
-                   <property name="maximumSize">
+                  <widget class="QDateEdit" name="dateEdit_vrfDate">
+                   <property name="minimumSize">
                     <size>
-                     <width>85</width>
-                     <height>16777215</height>
+                     <width>80</width>
+                     <height>0</height>
                     </size>
+                   </property>
+                   <property name="calendarPopup">
+                    <bool>true</bool>
+                   </property>
+                   <property name="date">
+                    <date>
+                     <year>2021</year>
+                     <month>1</month>
+                     <day>1</day>
+                    </date>
                    </property>
                   </widget>
                  </item>
@@ -1667,12 +1677,29 @@
                   </widget>
                  </item>
                  <item>
-                  <widget class="QLineEdit" name="lineEdit_vri_validDate">
-                   <property name="maximumSize">
+                  <widget class="QDateEdit" name="dateEdit_vri_validDate">
+                   <property name="minimumSize">
                     <size>
-                     <width>85</width>
-                     <height>16777215</height>
+                     <width>80</width>
+                     <height>0</height>
                     </size>
+                   </property>
+                   <property name="calendarPopup">
+                    <bool>true</bool>
+                   </property>
+                   <property name="date">
+                    <date>
+                     <year>2021</year>
+                     <month>1</month>
+                     <day>1</day>
+                    </date>
+                   </property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QCheckBox" name="checkBox_unlimited">
+                   <property name="text">
+                    <string>бессрочно</string>
                    </property>
                   </widget>
                  </item>
@@ -2720,6 +2747,13 @@
         </widget>
        </item>
        <item>
+        <widget class="QPushButton" name="pushButton_delete_all_equipment">
+         <property name="text">
+          <string>Удалить все</string>
+         </property>
+        </widget>
+       </item>
+       <item>
         <spacer name="horizontalSpacer_5">
          <property name="orientation">
           <enum>Qt::Horizontal</enum>
@@ -2731,6 +2765,13 @@
           </size>
          </property>
         </spacer>
+       </item>
+       <item>
+        <widget class="QPushButton" name="pushButton_refresh_all">
+         <property name="text">
+          <string>Обновить</string>
+         </property>
+        </widget>
        </item>
       </layout>
      </item>

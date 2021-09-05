@@ -142,6 +142,9 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.pushButton_add_dep.clicked.connect(self._on_add_dep)
         self.ui.pushButton_remove_dep.clicked.connect(self._on_remove_dep)
         self.ui.pushButton_clear.clicked.connect(self._clear_all)
+        self.ui.pushButton_refresh_all.clicked.connect(self._refresh_all)
+        self.ui.pushButton_delete_all_equipment.clicked.connect(self._delete_all_from_db)
+
         self.ui.pushButton_delete_mi.clicked.connect(self._on_delete_mi)
         self.ui.pushButton_import.clicked.connect(self._on_import)
         # self.ui.pushButton_delete_mi.clicked.connect(self._test)
@@ -152,6 +155,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.comboBox_measure_subcode.textActivated.connect(self._change_card_number)
         self.ui.radioButton_applicable.toggled.connect(self._on_applicable_toggle)
         self.ui.tabWidget.currentChanged.connect(self._on_tab_changed)
+        self.ui.checkBox_unlimited.toggled.connect(lambda: self.ui.dateEdit_vri_validDate.setDisabled(True) if self.ui.checkBox_unlimited.checkState()==2 else self.ui.dateEdit_vri_validDate.setEnabled(True))
         # self.ui.lineEdit_reg_card_number.textChanged.connect(self._appearance_init)
 
     def _change_card_number(self):
@@ -177,7 +181,6 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         # новый номер карточки и предыдущий номер карточки (на один меньше нового)
         new_number_string, prev_number_string = get_next_card_number(self.list_of_card_numbers, new_meas_code,
                                                                      new_sub_meas_code)
-        # prev_number_string = get_next_card_number(self.list_of_card_numbers, new_meas_code, new_sub_meas_code)[1]
 
         # если выбран первоначальный (сохраненный) вид измерений, то записываем значение из словаря
         if prev_number_string == cur_card_number:
@@ -223,9 +226,13 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         if choisen:
             self.ui.groupBox_applicable.show()
             self.ui.groupBox_inapplicable.hide()
+            self.ui.checkBox_unlimited.setEnabled(True)
+            self.ui.dateEdit_vri_validDate.setEnabled(True)
         else:
             self.ui.groupBox_applicable.hide()
             self.ui.groupBox_inapplicable.show()
+            self.ui.checkBox_unlimited.setDisabled(True)
+            self.ui.dateEdit_vri_validDate.setDisabled(True)
 
     # --------------------------------------ИЗМЕНЕНИЕ СТАТУСА СИ (ЭТАЛОН, СИ...)---------------------------------------
     def _on_status_changed(self, new_status):
@@ -325,7 +332,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 vri_organization = self.mis_vri_dict[mi_id][vri_id]['organization']
                 vri_mieta = "нет"
 
-                if self.mis_vri_dict[mi_id][vri_id]['applicable'] == "1":
+                if self.mis_vri_dict[mi_id][vri_id]['applicable'] != "0":
                     if self.mis_vri_dict[mi_id][vri_id]['validDate']:
                         vri_valid_date = self.mis_vri_dict[mi_id][vri_id]['validDate']
                 else:
@@ -337,6 +344,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                     regNumber = self.mietas_dict[vri_id]['number']
                     if rankTitle and regNumber:
                         vri_mieta = f"{regNumber}: {rankTitle.lower()}"
+                    elif regNumber:
+                        vri_mieta = f"{regNumber}"
 
                 row.append(QStandardItem(vri_vrf_date))
                 row.append(QStandardItem(vri_valid_date))
@@ -446,8 +455,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.plainTextEdit_vri_organization.setPlainText(vri_dict['organization'])
         self.ui.lineEdit_vri_signCipher.setText(vri_dict['signCipher'])
         self.ui.plainTextEdit_vri_miOwner.setPlainText(vri_dict['miOwner'])
-        self.ui.lineEdit_vrfDate.setText(vri_dict['vrfDate'])
-        self.ui.lineEdit_vri_validDate.setText(vri_dict['validDate'])
+        self.ui.dateEdit_vrfDate.setDate(QDate.fromString(vri_dict['vrfDate'], "dd.MM.yyyy"))
+
         self.ui.comboBox_vri_vriType.setCurrentText(vri_dict['vriType'])
         self.ui.plainTextEdit_vri_docTitle.setPlainText(vri_dict['docTitle'])
         if int(vri_dict['applicable']):
@@ -456,9 +465,17 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             self.ui.lineEdit_vri_stickerNum.setText(vri_dict['stickerNum'])
             self.ui.checkBox_vri_signPass.setChecked(int(vri_dict['signPass']))
             self.ui.checkBox_vri_signMi.setChecked(int(vri_dict['signMi']))
+            if vri_dict['validDate']:
+                self.ui.checkBox_unlimited.setChecked(False)
+                self.ui.dateEdit_vri_validDate.setDate(QDate.fromString(vri_dict['validDate'], "dd.MM.yyyy"))
+            else:
+                self.ui.checkBox_unlimited.setChecked(True)
         else:
             self.ui.radioButton_inapplicable.setChecked(True)
             self.ui.lineEdit_vri_noticeNum.setText(vri_dict['certNum'])
+            self.ui.checkBox_unlimited.setChecked(False)
+            self.ui.checkBox_unlimited.setDisabled(True)
+            self.ui.dateEdit_vri_validDate.setDisabled(True)
         self.ui.plainTextEdit_vri_structure.setPlainText(vri_dict['structure'])
         self.ui.checkBox_vri_briefIndicator.setChecked(int(vri_dict['briefIndicator']))
         self.ui.plainTextEdit_vri_briefCharacteristics.setPlainText(
@@ -535,6 +552,12 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self._clear_mieta_tab()
         self._clear_vri_tab()
 
+    # ---------------------------------------ОБНОВЛЕНИЕ ВСЕГО----------------------------------------------------------
+    def _refresh_all(self):
+        self._clear_all()
+        self._create_dicts()
+        self._update_mi_table()
+
     # ---------------------------------ОЧИСТКА ВКЛАДКИ ОБОРУДОВАНИЯ----------------------------------------------------
     def _clear_mi_tab(self):
 
@@ -593,8 +616,11 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.lineEdit_vri_FIF_id.setText("")
         self.ui.plainTextEdit_vri_organization.setPlainText("")
         self.ui.plainTextEdit_vri_miOwner.setPlainText("")
-        self.ui.lineEdit_vrfDate.setText("")
-        self.ui.lineEdit_vri_validDate.setText("")
+        self.ui.dateEdit_vrfDate.setDate(QDate(2021, 1, 1))
+        # self.ui.dateEdit_vri_validDate.setEnabled(True)
+        self.ui.checkBox_unlimited.setEnabled(True)
+        self.ui.checkBox_unlimited.setChecked(False)
+        self.ui.dateEdit_vri_validDate.setDate(QDate(2022, 1, 1))
         self.ui.comboBox_vri_vriType.setCurrentIndex(0)
         self.ui.plainTextEdit_vri_docTitle.setPlainText("")
         self.ui.radioButton_applicable.setChecked(True)
@@ -748,20 +774,26 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                     signPass = 1
                 if self.ui.checkBox_vri_signMi.isChecked():
                     signMi = 1
+                if self.ui.checkBox_unlimited.isChecked():
+                    valid_date = ""
+                else:
+                    valid_date = self.ui.dateEdit_vri_validDate.date().toString("dd.MM.yyyy")
             else:
                 applicable = 0
                 cert_num = self.ui.lineEdit_vri_noticeNum.text()
+                valid_date = ""
 
             if self.ui.checkBox_vri_briefIndicator.isChecked():
                 briefIndicator = 1
+            vrf_date = self.ui.dateEdit_vrfDate.date().toString("dd.MM.yyyy")
             sql_replace = f"REPLACE INTO mis_vri_info VALUES (" \
                           f"{vri_id}, " \
                           f"{mi_id}, " \
                           f"'{self.ui.plainTextEdit_vri_organization.toPlainText()}', " \
                           f"'{self.ui.lineEdit_vri_signCipher.text()}', " \
                           f"'{self.ui.plainTextEdit_vri_miOwner.toPlainText()}', " \
-                          f"'{self.ui.lineEdit_vrfDate.text()}', " \
-                          f"'{self.ui.lineEdit_vri_validDate.text()}', " \
+                          f"'{vrf_date}', " \
+                          f"'{valid_date}', " \
                           f"'{self.ui.comboBox_vri_vriType.currentText()}', " \
                           f"'{self.ui.plainTextEdit_vri_docTitle.toPlainText()}', " \
                           f"{applicable}, " \
@@ -944,7 +976,10 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 signPass = 1
             if self.ui.checkBox_vri_signMi.isChecked():
                 signMi = 1
-            valid_date = self.ui.lineEdit_vri_validDate.text()
+            if self.ui.checkBox_unlimited.isChecked():
+                valid_date = ""
+            else:
+                valid_date = self.ui.dateEdit_vri_validDate.date().toString("dd.MM.yyyy")
         else:
             applicable = 0
             cert_num = self.ui.lineEdit_vri_noticeNum.text()
@@ -952,14 +987,14 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
         if self.ui.checkBox_vri_briefIndicator.isChecked():
             briefIndicator = 1
-
+        vrf_date = self.ui.dateEdit_vrfDate.date().toString("dd.MM.yyyy")
         sql_replace = f"REPLACE INTO mis_vri_info VALUES (" \
                       f"{vri_id}, " \
                       f"{int(mi_id)}, " \
                       f"'{self.ui.plainTextEdit_vri_organization.toPlainText()}', " \
                       f"'{self.ui.lineEdit_vri_signCipher.text()}', " \
                       f"'{self.ui.plainTextEdit_vri_miOwner.toPlainText()}', " \
-                      f"'{self.ui.lineEdit_vrfDate.text()}', " \
+                      f"'{vrf_date}', " \
                       f"'{valid_date}', " \
                       f"'{self.ui.comboBox_vri_vriType.currentText()}', " \
                       f"'{self.ui.plainTextEdit_vri_docTitle.toPlainText()}', " \
@@ -1105,6 +1140,31 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 else:
                     self._clear_vri_tab()
                     self._clear_mieta_tab()
+
+    # -------------------------------------КЛИК ПО КНОПКЕ "УДАЛИТЬ ВСЕ"------------------------------------------------
+    def _delete_all_from_db(self):
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("Подтверждение удаления")
+        dialog.setText(f"Вы действительно хотите удалить всю информацию об оборудовании?\n"
+                       f"Также удалится вся информация о поверках и эталонах.")
+        dialog.setIcon(QMessageBox.Warning)
+        btn_yes = QPushButton("&Да")
+        btn_no = QPushButton("&Нет")
+        dialog.addButton(btn_yes, QMessageBox.AcceptRole)
+        dialog.addButton(btn_no, QMessageBox.RejectRole)
+        dialog.setDefaultButton(btn_no)
+        dialog.setEscapeButton(btn_no)
+        result = dialog.exec()
+        if result == 0:
+            sql_delete_1 = f"TRUNCATE mis"
+            sql_delete_2 = f"TRUNCATE mis_departments"
+            sql_delete_3 = f"TRUNCATE mis_vri_info"
+            sql_delete_4 = f"TRUNCATE mietas"
+            MySQLConnection.verify_connection()
+            connection = MySQLConnection.create_connection()
+            MySQLConnection.execute_transaction_query(connection, sql_delete_1, sql_delete_2, sql_delete_3, sql_delete_4)
+            connection.close()
+            self._refresh_all()
 
     # -------------------------------------КЛИК ПО КНОПКЕ "НАЙТИ ПОВЕРКИ"----------------------------------------------
     def _on_find_vri(self):

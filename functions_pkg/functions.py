@@ -40,6 +40,13 @@ def get_dep_name_from_id(dep_id, dep_dict):
         return ""
 
 
+def get_dep_id_from_number(dep_number, dep_dict):
+    for dep_id in dep_dict:
+        if dep_dict[dep_id]['number'] == dep_number:
+            return dep_id
+    return "0"
+
+
 def get_workers():
     MySQLConnection.verify_connection()
     connection = MySQLConnection.create_connection()
