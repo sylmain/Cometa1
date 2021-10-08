@@ -123,6 +123,7 @@ class MySQLConnection:
             dialog.setDefaultButton(btn_close)
             dialog.exec()
             exit()
+        print("connection verified")
 
     @staticmethod
     def is_settings_file_exists():

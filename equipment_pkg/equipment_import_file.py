@@ -5,7 +5,7 @@ from functions_pkg.db_functions import MySQLConnection
 from PyQt5 import QtWidgets
 from PyQt5.QtCore import Qt, QThread, pyqtSignal, QDateTime, QRegExp, QDate
 from PyQt5.QtWidgets import QWidget, QApplication, QComboBox, QLabel, QFileDialog, QInputDialog, QMessageBox, \
-    QPushButton
+    QPushButton, QProgressDialog
 from openpyxl import load_workbook
 
 import functions_pkg.functions as func
@@ -115,7 +115,6 @@ COMBOBOX_VALUES = ["",
                    "10. Организация-поверитель",
                    "10. СИ как эталон - номер в перечне"
                    ]
-MEASURE_CODES = func.get_measure_codes()
 
 COLUMN_NAMES = ["A(1)", "B(2)", "C(3)", "D(4)", "E(5)", "F(6)", "G(7)", "H(8)", "I(9)", "J(10)", "K(11)", "L(12)",
                 "M(13)", "N(14)", "O(15)", "P(16)", "Q(17)", "R(18)", "S(19)", "T(20)", "U(21)", "V(22)", "W(23)",
@@ -324,13 +323,27 @@ class EquipmentImportFileWidget(QWidget):
             QMessageBox.critical(self, "Ошибка",
                                  f"Необходимо выбрать файл для импорта!")
             return
+
         self.error_row_numbers.clear()
         self.set_of_card_numbers.clear()
         sheet = self.wb.active
         start_row = self.ui.spinBox_start_row.value()
-        count = self.ui.spinBox_end_row.value()
+        end_row = self.ui.spinBox_end_row.value()
+        count = end_row - start_row + 1
 
-        for i in range(start_row, count + 1):
+        self.dialog = QProgressDialog(self)
+        self.dialog.setAutoClose(False)
+        self.dialog.setAutoReset(False)
+        self.dialog.setWindowTitle("ОЖИДАЙТЕ! Идет импорт!")
+        self.dialog.setRange(0, 100)
+        self.dialog.setWindowModality(Qt.WindowModal)
+        self.dialog.setCancelButton(None)
+        self.dialog.resize(350, 100)
+        self.dialog.show()
+        self.dialog.setLabelText(f"Импортировано 0 из {count}")
+        self.dialog.setValue(0)
+
+        for i in range(start_row, end_row + 1):
             self.final_dict[i] = dict()
 
             reg_card_number = measure_code = department = responsiblePerson = room = reestr = MPI \
@@ -521,9 +534,13 @@ class EquipmentImportFileWidget(QWidget):
             self.final_dict[i]['cert_numbers'] = cert_numbers
             self.final_dict[i]['results'] = results
             self.final_dict[i]['organizations'] = organizations
-            print(valid_dates)
+            # print(valid_dates)
             # self.cur_row_number = i
             self._verification_start(i)
+
+            self.dialog.setLabelText(f"Импортировано {i} из {count}")
+            self.dialog.setValue(i * 100 / count)
+        self.dialog.close()
 
         QMessageBox.information(self, "Внимание!",
                                 f"Строки с номерами: {', '.join(self.error_row_numbers)} не импортировались. "
@@ -604,9 +621,9 @@ class EquipmentImportFileWidget(QWidget):
                         if 'mit_id' in self.mit_search['result']['items'][0]:
                             mit_id = self.mit_search['result']['items'][0]['mit_id']
 
-                    print(mit_id)
-                    print(title_list)
-                    print(manuf_list)
+                    # print(mit_id)
+                    # print(title_list)
+                    # print(manuf_list)
 
                     if mit_id:
                         self.search_thread.url = f"{URL_START}/mit/{mit_id}"
@@ -783,36 +800,64 @@ class EquipmentImportFileWidget(QWidget):
                          f"{int(has_verif_method)}, " \
                          f"'{self.final_dict[row_number]['period_TO']}', " \
                          f"'{self.final_dict[row_number]['owner']}', " \
-                         f"'{self.final_dict[row_number]['owner_contract']}');"
+                         f"'{self.final_dict[row_number]['owner_contract']}', " \
+                         f"NULL);"
         # print(sql_insert_mis)
         MySQLConnection.verify_connection()
         connection = MySQLConnection.create_connection()
         result = MySQLConnection.execute_query(connection, sql_insert_mis)
 
         if result[0]:
-            print(row_number)
+            # print(row_number)
             mi_id = str(result[1])
+
         else:
             connection.close()
             return
 
         if mi_id:
+            # ДЕЛИМ ОТДЕЛЫ ЧЕРЕЗ ЗАПЯТУЮ И СОХРАНЯЕМ В БД
             insert_list = self.final_dict[row_number]['department'].split(",")
             insert_set = {func.get_dep_id_from_number(dep_number.strip(), self.dep_dict) for dep_number in insert_list
                           if dep_number}
             insert_set.discard("0")
             if insert_set:
-                sql_insert = f"INSERT IGNORE INTO mis_departments VALUES ({mi_id}, " \
-                             f"{f'), ({mi_id}, '.join(insert_set)});"
+                sql_insert = f"INSERT IGNORE INTO mis_departments VALUES ({int(mi_id)}, " \
+                             f"{f'), ({int(mi_id)}, '.join(insert_set)});"
                 MySQLConnection.execute_query(connection, sql_insert)
 
+            # СОХРАНЯЕМ ПОВЕРКИ
             vrf_dates = self.final_dict[row_number]['vrf_dates']
             valid_dates = self.final_dict[row_number]['valid_dates']
             results = self.final_dict[row_number]['results']
             organizations = self.final_dict[row_number]['organizations']
 
             for i in range(10):
-                if cert_numbers[i]:
+                if cert_numbers[i] and mieta_numbers[i]:
+                    applicable = results[i].lower()
+                    if applicable == "брак" \
+                            or applicable == "нет" \
+                            or applicable == "0" \
+                            or applicable == "ложь" \
+                            or applicable == "false":
+                        applicable = 0
+                    else:
+                        applicable = 1
+                    for mieta_num in str(mieta_numbers[i]).split(","):
+                        mieta_num = mieta_num.strip()
+                        sql_insert = f"INSERT INTO mis_vri_info (vri_mi_id, vri_organization, vri_vrfDate, " \
+                                     f"vri_validDate, vri_applicable, vri_certNum, vri_mieta_number) VALUES (" \
+                                     f"{int(mi_id)}, " \
+                                     f"'{organizations[i]}', " \
+                                     f"'{vrf_dates[i]}', " \
+                                     f"'{valid_dates[i]}', " \
+                                     f"{int(applicable)}, " \
+                                     f"'{cert_numbers[i]}', " \
+                                     f"'{mieta_num}')"
+
+                        MySQLConnection.execute_query(connection, sql_insert)
+
+                elif cert_numbers[i]:
                     applicable = results[i].lower()
                     if applicable == "брак" \
                             or applicable == "нет" \
@@ -824,55 +869,20 @@ class EquipmentImportFileWidget(QWidget):
                         applicable = 1
                     sql_insert = f"INSERT INTO mis_vri_info (vri_mi_id, vri_organization, vri_vrfDate, " \
                                  f"vri_validDate, vri_applicable, vri_certNum) VALUES (" \
-                                 f"{mi_id}, " \
+                                 f"{int(mi_id)}, " \
                                  f"'{organizations[i]}', " \
                                  f"'{vrf_dates[i]}', " \
                                  f"'{valid_dates[i]}', " \
-                                 f"{applicable}, " \
+                                 f"{int(applicable)}, " \
                                  f"'{cert_numbers[i]}')"
-                    print(sql_insert)
-                    result = MySQLConnection.execute_query(connection, sql_insert)
-
-                    if result[0]:
-                        vri_id = str(result[1])
-                    else:
-                        connection.close()
-                        return
-
-                    if vri_id and i == 0:
-                        for j in range(10):
-                            if mieta_numbers[j]:
-                                if not vri_id:
-                                    sql_insert = f"INSERT INTO mis_vri_info (vri_mi_id) VALUES ({mi_id})"
-                                    result = MySQLConnection.execute_query(connection, sql_insert)
-                                    if result[0]:
-                                        vri_id = str(result[1])
-                                    else:
-                                        connection.close()
-                                        return
-                                else:
-                                    sql_insert = f"INSERT INTO mietas (mieta_mi_id, mieta_vri_id, mieta_number) VALUES (" \
-                                                 f"{mi_id}, " \
-                                                 f"{vri_id}, " \
-                                                 f"'{mieta_numbers[j]}');"
-                                    MySQLConnection.execute_query(connection, sql_insert)
-                                    vri_id = 0
+                    MySQLConnection.execute_query(connection, sql_insert)
 
                 elif mieta_numbers[i]:
-
-                    sql_insert = f"INSERT INTO mis_vri_info (vri_mi_id) VALUES ({mi_id})"
-                    result = MySQLConnection.execute_query(connection, sql_insert)
-                    if result[0]:
-                        vri_id = str(result[1])
-                    else:
-                        connection.close()
-                        return
-                    if vri_id:
-                        sql_insert = f"INSERT INTO mietas (mieta_mi_id, mieta_vri_id, mieta_number) VALUES (" \
-                                     f"{mi_id}, " \
-                                     f"{vri_id}, " \
-                                     f"'{mieta_numbers[i]}');"
-                        print(sql_insert)
+                    for mieta_num in str(mieta_numbers[i]).split(","):
+                        mieta_num = mieta_num.strip()
+                        sql_insert = f"INSERT INTO mis_vri_info (vri_mi_id, vri_mieta_number) VALUES (" \
+                                     f"{int(mi_id)}, " \
+                                     f"'{mieta_num}');"
                         MySQLConnection.execute_query(connection, sql_insert)
 
         connection.close()

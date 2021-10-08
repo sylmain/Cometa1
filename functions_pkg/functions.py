@@ -23,6 +23,7 @@ def get_departments():
                                  'boss_post': dep[8],
                                  'boss_assistant_post': dep[9]}
         dep_name_list.append(dep[1])
+    print("get_departments")
     return {'dep_dict': dep_dict, 'dep_name_list': dep_name_list, 'reserve': 'reserve'}
 
 
@@ -73,6 +74,7 @@ def get_workers():
                                        'email': worker[13],
                                        'info': worker[14],
                                        'phone': worker[15]}
+    print("get_workers")
 
     return {'worker_dict': worker_dict, 'reserve': 'reserve'}
 
@@ -99,6 +101,7 @@ def get_worker_deps():
             worker_deps_dict[str(dep_worker[0])] = [str(dep_worker[1])]
         else:
             worker_deps_dict[str(dep_worker[0])].append(str(dep_worker[1]))
+    print("get_worker_deps")
 
     return {'dep_workers_dict': dep_workers_dict, 'worker_deps_dict': worker_deps_dict, 'reserve': 'reserve'}
 
@@ -169,6 +172,8 @@ def get_rooms():
                                    'owner': room[9],
                                    'personal': room[10],
                                    'info': room[11]}
+    print("get_rooms")
+
     return {'room_dict': room_dict, 'reserve': 'reserve'}
 
 
@@ -202,6 +207,7 @@ def get_room_deps():
             room_deps_dict[str(dep_room[0])] = [str(dep_room[1])]
         else:
             room_deps_dict[str(dep_room[0])].append(str(dep_room[1]))
+    print("get_room_deps")
 
     return {'dep_rooms_dict': dep_rooms_dict, 'room_deps_dict': room_deps_dict, 'reserve': 'reserve'}
 
@@ -249,9 +255,11 @@ def get_measure_codes():
                 measure_sub_codes_dict[measure_code].append(f"{code[0]} {code[1]}")
             else:
                 measure_sub_codes_dict[measure_code].append(f"{code[0]} {code[1]}")
-    print(measure_codes_dict)
-    print(measure_sub_codes_dict)
-    print(measure_codes_list)
+    # print(measure_codes_dict)
+    # print(measure_sub_codes_dict)
+    # print(measure_codes_list)
+    print("get_measure_codes")
+
     return {'measure_codes_dict': measure_codes_dict, 'measure_codes_list': measure_codes_list,
             'measure_sub_codes_dict': measure_sub_codes_dict}
 
@@ -273,7 +281,7 @@ def get_mis():
     mi_dict = dict()
     set_of_mi = set()
     list_of_card_numbers = list()
-    sql_select = "SELECT * FROM mis ORDER BY mi_measure_code"
+    sql_select = "SELECT * FROM mis ORDER BY mi_id"
     MySQLConnection.verify_connection()
     connection = MySQLConnection.create_connection()
     result = MySQLConnection.execute_read_query(connection, sql_select)
@@ -307,9 +315,11 @@ def get_mis():
                                'MP': str(mi[26]),
                                'TO_period': mi[27],
                                'owner': mi[28],
-                               'owner_contract': mi[29]}
+                               'owner_contract': mi[29],
+                               'last_scan_date': mi[30]}
         set_of_mi.add((mi[5], mi[7], mi[8]))
         list_of_card_numbers.append(mi[1])
+    print("get_mis")
 
     return {'mi_dict': mi_dict, 'set_of_mi': set_of_mi, 'list_of_card_numbers': list_of_card_numbers,
             'reserve': 'reserve'}
@@ -353,67 +363,56 @@ def get_mi_deps():
             dep_mis_dict[str(mi_dep[1])] = [str(mi_dep[0])]
         else:
             dep_mis_dict[str(mi_dep[1])].append(str(mi_dep[0]))
+    print("get_mi_deps")
 
     return {'mi_deps_dict': mi_deps_dict, 'dep_mis_dict': dep_mis_dict, 'reserve': 'reserve'}
 
 
-def get_mietas():
-    mietas_dict = dict()
-    sql_select = "SELECT * FROM mietas"
-    MySQLConnection.verify_connection()
-    connection = MySQLConnection.create_connection()
-    result = MySQLConnection.execute_read_query(connection, sql_select)
-    connection.close()
-    for mieta in result:
-        mietas_dict[str(mieta[2])] = {'mieta_id': str(mieta[0]),
-                                      'mi_id': str(mieta[1]),
-                                      'number': mieta[3],
-                                      'rankcode': mieta[4],
-                                      'npenumber': mieta[5],
-                                      'schematype': mieta[6],
-                                      'schematitle': mieta[7],
-                                      'rankclass': mieta[8]}
-
-    return {'mietas_dict': mietas_dict, 'reserve': 'reserve'}
-
-
 def get_mis_vri_info():
     mis_vri_dict = dict()
-    sql_select = "SELECT * FROM mis_vri_info ORDER BY vri_mi_id"
+    sql_select = "SELECT * FROM mis_vri_info ORDER BY vri_mi_id, vri_id"
     MySQLConnection.verify_connection()
     connection = MySQLConnection.create_connection()
     result = MySQLConnection.execute_read_query(connection, sql_select)
     connection.close()
     for vri_info in result:
-        temp_dict = {'organization': vri_info[2],
-                     'signCipher': vri_info[3],
-                     'miOwner': vri_info[4],
-                     'vrfDate': vri_info[5],
-                     'validDate': vri_info[6],
-                     'vriType': vri_info[7],
-                     'docTitle': vri_info[8],
-                     'applicable': str(vri_info[9]),
-                     'certNum': vri_info[10],
-                     'stickerNum': vri_info[11],
-                     'signPass': str(vri_info[12]),
-                     'signMi': str(vri_info[13]),
-                     'inapplicable_reason': vri_info[14],
-                     'structure': vri_info[15],
-                     'briefIndicator': str(vri_info[16]),
-                     'briefCharacteristics': vri_info[17],
-                     'ranges': vri_info[18],
-                     'values': vri_info[19],
-                     'channels': vri_info[20],
-                     'blocks': vri_info[21],
-                     'additional_info': vri_info[22],
+        temp_dict = {'vri_organization': vri_info[2],
+                     'vri_signCipher': vri_info[3],
+                     'vri_miOwner': vri_info[4],
+                     'vri_vrfDate': vri_info[5],
+                     'vri_validDate': vri_info[6],
+                     'vri_vriType': vri_info[7],
+                     'vri_docTitle': vri_info[8],
+                     'vri_applicable': str(vri_info[9]),
+                     'vri_certNum': vri_info[10],
+                     'vri_stickerNum': vri_info[11],
+                     'vri_signPass': str(vri_info[12]),
+                     'vri_signMi': str(vri_info[13]),
+                     'vri_inapplicable_reason': vri_info[14],
+                     'vri_structure': vri_info[15],
+                     'vri_briefIndicator': str(vri_info[16]),
+                     'vri_briefCharacteristics': vri_info[17],
+                     'vri_ranges': vri_info[18],
+                     'vri_values': vri_info[19],
+                     'vri_channels': vri_info[20],
+                     'vri_blocks': vri_info[21],
+                     'vri_additional_info': vri_info[22],
                      'info': vri_info[23],
-                     'FIF_id': vri_info[24]}
+                     'vri_FIF_id': vri_info[24],
+                     'vri_mieta_number': vri_info[25],
+                     'vri_mieta_rankcode': vri_info[26],
+                     'vri_mieta_rankclass': vri_info[27],
+                     'vri_mieta_npenumber': vri_info[28],
+                     'vri_mieta_schematype': vri_info[29],
+                     'vri_mieta_schematitle': vri_info[30],
+                     'vri_last_scan_date': vri_info[31]}
         if str(vri_info[1]) not in mis_vri_dict:
             mis_vri_dict[str(vri_info[1])] = dict()
             mis_vri_dict[str(vri_info[1])][str(vri_info[0])] = temp_dict
         else:
             mis_vri_dict[str(vri_info[1])][str(vri_info[0])] = temp_dict
-    # print(mis_vri_dict)
+    print("get_mis_vri_info")
+
     return {'mis_vri_dict': mis_vri_dict, 'reserve': 'reserve'}
 
 
@@ -497,7 +496,3 @@ def get_max_substring(str_1, str_2):
     # print(lo, get(lo))
     return lo, get(lo)[0], get(lo)[1]
 
-
-a = """проверка"""
-b = """ъорошпроверровл"""
-# print(get_max_substring(a, b))

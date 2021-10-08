@@ -1,3 +1,5 @@
+import os
+from glob import glob
 import mysql.connector
 import requests
 from PyQt5.QtCore import QThread, pyqtSignal, Qt
@@ -16,19 +18,15 @@ class UpdateThread(QThread):
     def __init__(self, parent=None):
         QThread.__init__(self, parent)
         self.running = False
-        wb = load_workbook(filename='./fif_results.xlsx')
-        self.sheet = wb['Sheet1']
-        self.count = self.sheet.max_row - 3
+        self.file_list = list(glob(os.path.join(os.getcwd(), '*.xlsx')))
 
     def run(self):
         self.running = True
         numbers = set()
         with open("./certNumbers.txt", "r", encoding="utf-8") as f:
             for line in f:
-                numbers.add(line.strip()[-8:])
+                numbers.add(line.strip().rsplit("/", 1)[1])
             f.close()
-
-        x = 4
 
         try:
             connection = mysql.connector.connect(
@@ -41,91 +39,102 @@ class UpdateThread(QThread):
         except Error as e:
             self.error_signal.emit(f"error: {e}")
             return
-        while self.running and x < self.sheet.max_row + 1:
-            cell = 'K' + str(x)
-            vri_id = self.sheet[cell].value[-8:]
-            if vri_id not in numbers:
-                try:
-                    self.sleep(1)
-                    resp = requests.get(f"https://fgis.gost.ru/fundmetrology/eapi/vri/1-{vri_id}")
-                    json_resp = resp.json()
-                    if "result" in json_resp:
-                        if "etaMI" in json_resp['result']['miInfo']:
-                            reestr = json_resp['result']['miInfo']['etaMI']['mitypeNumber']
-                            title = json_resp['result']['miInfo']['etaMI']['mitypeTitle']
-                            modification = json_resp['result']['miInfo']['etaMI']['modification']
-                            manufactureNum = json_resp['result']['miInfo']['etaMI']['manufactureNum']
 
-                        elif "singleMI" in json_resp['result']['miInfo']:
-                            if "mitypeNumber" in json_resp['result']['miInfo']['singleMI']:
-                                reestr = json_resp['result']['miInfo']['singleMI']['mitypeNumber']
-                                title = json_resp['result']['miInfo']['singleMI']['mitypeTitle']
-                            else:
-                                reestr = "СГ101-32"
-                                title = json_resp['result']['miInfo']['singleMI']['mitypeTitle'].replace("СГ101-32 - ",
-                                                                                                         "")
-                                # print(title)
-                            modification = json_resp['result']['miInfo']['singleMI']['modification']
-                            manufactureNum = json_resp['result']['miInfo']['singleMI']['manufactureNum']
+        for file_name in self.file_list:
+            print(file_name)
+            wb = load_workbook(filename=file_name)
+            sheet = wb['Sheet1']
+            count = sheet.max_row - 3
+            x = 4
 
-                        elif "partyMI" in json_resp['result']['miInfo']:
-                            reestr = json_resp['result']['miInfo']['partyMI']['mitypeNumber']
-                            title = json_resp['result']['miInfo']['partyMI']['mitypeTitle']
-                            modification = json_resp['result']['miInfo']['partyMI']['modification']
-                            manufactureNum = json_resp['result']['miInfo']['partyMI']['quantity']
+            while self.running and x < sheet.max_row + 1:
+                cell = 'K' + str(x)
+                vri_id = str(sheet[cell].value).rsplit("/", 1)[1]
+                if vri_id not in numbers:
+                    print(vri_id)
+                    try:
+                        self.sleep(1)
+                        resp = requests.get(f"https://fgis.gost.ru/fundmetrology/eapi/vri/1-{vri_id}")
+                        json_resp = resp.json()
+                        if "result" in json_resp:
+                            if "etaMI" in json_resp['result']['miInfo']:
+                                reestr = json_resp['result']['miInfo']['etaMI']['mitypeNumber']
+                                title = json_resp['result']['miInfo']['etaMI']['mitypeTitle']
+                                modification = json_resp['result']['miInfo']['etaMI']['modification']
+                                manufactureNum = json_resp['result']['miInfo']['etaMI']['manufactureNum']
 
-                        modification = str(modification).replace("\'", "")
-                        modification = modification.replace("\"", "")
+                            elif "singleMI" in json_resp['result']['miInfo']:
+                                if "mitypeNumber" in json_resp['result']['miInfo']['singleMI']:
+                                    reestr = json_resp['result']['miInfo']['singleMI']['mitypeNumber']
+                                    title = json_resp['result']['miInfo']['singleMI']['mitypeTitle']
+                                else:
+                                    reestr = "СГ101-32"
+                                    title = json_resp['result']['miInfo']['singleMI']['mitypeTitle'].replace("СГ101-32 - ",
+                                                                                                             "")
+                                    # print(title)
+                                modification = json_resp['result']['miInfo']['singleMI']['modification']
+                                manufactureNum = json_resp['result']['miInfo']['singleMI']['manufactureNum']
 
-                        if "applicable" in json_resp['result']['vriInfo']:
-                            certNum = json_resp['result']['vriInfo']['applicable']['certNum']
-                            if "stickerNum" in json_resp['result']['vriInfo']['applicable']:
-                                sticker = json_resp['result']['vriInfo']['applicable']['stickerNum']
-                                if sticker == "Нет данных":
+                            elif "partyMI" in json_resp['result']['miInfo']:
+                                reestr = json_resp['result']['miInfo']['partyMI']['mitypeNumber']
+                                title = json_resp['result']['miInfo']['partyMI']['mitypeTitle']
+                                modification = json_resp['result']['miInfo']['partyMI']['modification']
+                                manufactureNum = json_resp['result']['miInfo']['partyMI']['quantity']
+
+                            modification = str(modification).replace("\'", "")
+                            modification = modification.replace("\"", "")
+
+                            if "applicable" in json_resp['result']['vriInfo']:
+                                certNum = json_resp['result']['vriInfo']['applicable']['certNum']
+                                if "stickerNum" in json_resp['result']['vriInfo']['applicable']:
+                                    sticker = json_resp['result']['vriInfo']['applicable']['stickerNum']
+                                    if sticker == "Нет данных":
+                                        sticker = "-"
+                                else:
                                     sticker = "-"
-                            else:
+                                valid = json_resp['result']['vriInfo']['validDate']
+                                validDate = f"{valid.split('.')[2]}-{valid.split('.')[1]}-{valid.split('.')[0]}"
+                                result = "ГОДЕН"
+                            elif "inapplicable" in json_resp['result']['vriInfo']:
+                                certNum = json_resp['result']['vriInfo']['inapplicable']['noticeNum']
                                 sticker = "-"
-                            valid = json_resp['result']['vriInfo']['validDate']
-                            validDate = f"{valid.split('.')[2]}-{valid.split('.')[1]}-{valid.split('.')[0]}"
-                            result = "ГОДЕН"
-                        elif "inapplicable" in json_resp['result']['vriInfo']:
-                            certNum = json_resp['result']['vriInfo']['inapplicable']['noticeNum']
-                            sticker = "-"
-                            validDate = "0000-00-00"
-                            result = "БРАК"
-                        vrf = json_resp['result']['vriInfo']['vrfDate']
-                        vrfDate = f"{vrf.split('.')[2]}-{vrf.split('.')[1]}-{vrf.split('.')[0]}"
-                        miOwner = json_resp['result']['vriInfo']['miOwner']
-                        miOwner = miOwner.replace("«", "\"")
-                        miOwner = miOwner.replace("»", "\"")
-                    else:
-                        print("некорректный JSON")
-                        self.error_signal.emit(f"bad JSON")
+                                validDate = "0000-00-00"
+                                result = "БРАК"
+                            vrf = json_resp['result']['vriInfo']['vrfDate']
+                            vrfDate = f"{vrf.split('.')[2]}-{vrf.split('.')[1]}-{vrf.split('.')[0]}"
+                            miOwner = json_resp['result']['vriInfo']['miOwner']
+                            miOwner = miOwner.replace("«", "\"")
+                            miOwner = miOwner.replace("»", "\"")
+                        else:
+                            print("некорректный JSON")
+                            self.error_signal.emit(f"bad JSON")
+                            return
+                        query = f"INSERT IGNORE INTO complete_jobs2021_2 VALUES " \
+                                f"('{title}', " \
+                                f"'{modification}', " \
+                                f"'{miOwner}', " \
+                                f"'{manufactureNum}', " \
+                                f"'{reestr}', " \
+                                f"'{certNum}', " \
+                                f"'{vrfDate}', " \
+                                f"'{sticker}', " \
+                                f"'{result}', " \
+                                f"'{validDate}', " \
+                                f"'')"
+                        # print(query)
+                        cursor = connection.cursor()
+                        cursor.execute(query)
+                        connection.commit()
+                        with open("./certNumbers.txt", "a", encoding="utf-8") as f:
+                            f.write(f"{certNum}\n")
+                    except Error as e:
+                        self.error_signal.emit(f"error: {e}")
                         return
-                    query = f"INSERT IGNORE INTO complete_jobs2021_2 VALUES " \
-                            f"('{title}', " \
-                            f"'{modification}', " \
-                            f"'{miOwner}', " \
-                            f"'{manufactureNum}', " \
-                            f"'{reestr}', " \
-                            f"'{certNum}', " \
-                            f"'{vrfDate}', " \
-                            f"'{sticker}', " \
-                            f"'{result}', " \
-                            f"'{validDate}', " \
-                            f"'')"
-                    # print(query)
-                    cursor = connection.cursor()
-                    cursor.execute(query)
-                    connection.commit()
-                    with open("./certNumbers.txt", "a", encoding="utf-8") as f:
-                        f.write(f"{certNum}\n")
-                except Error as e:
-                    self.error_signal.emit(f"error: {e}")
-                    return
-            self.msg_signal.emit(f"{x - 3}/{self.count}")
-            x += 1
-            self.progress_signal.emit(x)
+                # self.msg_signal.emit(f"{x - 3}/{count}")
+                x += 1
+                self.progress_signal.emit(x)
+                self.msg_signal.emit(f"{vri_id}: file {str(file_name)[-7]}")
+
         self.msg_signal.emit(f"Выполняю обновление кода заказчика")
         query = f"UPDATE " \
                 f"  complete_jobs2021_2, " \
@@ -149,7 +158,8 @@ class Update(QMainWindow, Ui_MainWindow):
         self.ui.setupUi(self)
 
         self.update_thread = UpdateThread()
-        self.ui.progressBar.setRange(0, self.update_thread.count)
+        self.ui.progressBar.setRange(0, 100)
+        self.ui.progressBar.setValue(0)
 
         self.update_thread.msg_signal.connect(self.on_change, Qt.QueuedConnection)
         self.update_thread.error_signal.connect(self.on_error, Qt.QueuedConnection)

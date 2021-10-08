@@ -7,7 +7,7 @@ class GetRequest:
     def getRequest(url):
         # return requests.get(url).json()
         try:
-            response = requests.get(url, timeout=30)
+            response = requests.get(url, timeout=45)
             # если ответ успешен, исключения задействованы не будут
             response.raise_for_status()
         except Timeout:
