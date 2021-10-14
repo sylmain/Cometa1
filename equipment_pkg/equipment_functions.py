@@ -1,4 +1,4 @@
-from PyQt5.QtCore import QSettings, QRegExp
+from PyQt5.QtCore import QSettings, QRegExp, QDate
 from GLOBAL_VARS import *
 
 
@@ -244,25 +244,242 @@ def get_resp_dict(mit_resp=None, vri_resp=None, mieta_resp=None):
 
     return resp_dict
 
+def get_resp_dict_new(mit_resp=None, vri_resp=None, mieta_resp=None):
+    resp_dict = {}
 
-def get_temp_set_of_vri_from_mieta(mieta_resp):
-    set_of_vri = set()
-    if 'result' in mieta_resp:
-        result = mieta_resp['result']
-        mieta_number = mieta_vrf_date = mieta_cert_number = vri_id = ""
-        if 'number' in result:
-            mieta_number = result['number']
-        if 'cresults' in result:
-            for cresult in result['cresults']:
-                if 'verification_date' in cresult:
-                    mieta_vrf_date = cresult['verification_date']
-                if 'result_docnum' in cresult:
-                    mieta_cert_number = cresult['result_docnum']
-                if 'vri_id' in cresult:
-                    vri_id = cresult['vri_id']
-                set_of_vri.add((mieta_vrf_date, mieta_cert_number, mieta_number))
-    # print(set_of_vri)
-    return set_of_vri
+    if not mit_resp and not vri_resp and not mieta_resp:
+        return resp_dict
+
+    mi_reestr = ""
+    mi_mitypeURL = ""
+    mi_title = ""
+    mi_type = ""
+    mi_manufacturer = ""
+    mi_modification = ""
+    mi_interval = ""
+    mi_manufactureNum = ""
+    mi_inventoryNum = ""
+    mi_manufactureYear = ""
+    mi_quantity = ""
+    mi_mit_id = ""
+
+    vri_organization = ""
+    vri_signCipher = ""
+    vri_miOwner = ""
+    vri_vrfDate = ""
+    vri_validDate = ""
+    vri_vriType = ""
+    vri_docTitle = ""
+    vri_applicable = "1"
+    vri_certNum = ""
+    vri_stickerNum = ""
+    vri_signPass = "0"
+    vri_signMi = "0"
+    vri_structure = ""
+    vri_briefIndicator = "0"
+    vri_briefCharacteristics = ""
+    vri_ranges = ""
+    vri_values = ""
+    vri_channels = ""
+    vri_blocks = ""
+    vri_additional_info = ""
+
+    mieta_regNumber = ""
+    mieta_rankСоdе = ""
+    mieta_rankclass = ""
+    mieta_npenumber = ""
+    mieta_schematype = ""
+    mieta_schemaTitle = ""
+
+    if vri_resp:
+        tmp_dates = list()
+        for vri in vri_resp:
+            date = QDate().fromString(vri['result']['vriInfo']['vrfDate'], "dd.MM.yyyy")
+            tmp_dates.append(date)
+        for vri in vri_resp:
+            if max(tmp_dates).toString("dd.MM.yyyy") in vri['result']['vriInfo']['vrfDate']:
+                print(vri['result']['vriInfo']['vrfDate'])
+                if 'result' in vri:
+                    if 'miInfo' in vri['result']:
+                        miInfo = vri['result']['miInfo']
+                        if 'etaMI' in miInfo:
+                            miInfo = miInfo['etaMI']
+                        elif 'singleMI' in miInfo:
+                            miInfo = miInfo['singleMI']
+                        elif 'partyMI' in miInfo:
+                            miInfo = miInfo['partyMI']
+
+                        mi_reestr = miInfo.get('mitypeNumber', "")
+                        mi_mitypeURL = miInfo.get('mitypeURL', "")
+                        mi_title = miInfo.get('mitypeTitle', "")
+                        mi_type = miInfo.get('mitypeType', "")
+                        mi_modification = miInfo.get('modification', "")
+
+                        mi_manufactureNum = miInfo.get('manufactureNum', "")
+                        mi_inventoryNum = miInfo.get('inventoryNum', "")
+                        mi_manufactureYear = str(miInfo.get('manufactureYear', ""))
+                        mi_quantity = str(miInfo.get('quantity', ""))
+
+                        vriInfo = vri['result']['vriInfo']
+                        vri_vrfDate = vriInfo.get('vrfDate', "")
+                        vri_validDate = vriInfo.get('validDate', "")
+
+                        if vri_vrfDate and vri_validDate and not mi_interval:
+                            mi_interval = str((int(vri_validDate[-4:]) - int(vri_vrfDate[-4:])) * 12)
+                            print(f"Интервал: {mi_interval}")
+
+        resp_dict['vris'] = []
+        for vri in vri_resp:
+            vri_FIF_id = vri.get('vri_FIF_id', "")
+            vri_id = vri.get('vri_id', "")
+            if 'result' in vri:
+                if 'vriInfo' in vri['result']:
+                    vriInfo = vri['result']['vriInfo']
+
+                    vri_organization = vriInfo.get('organization', "")
+                    if "(" in vri_organization:
+                        vri_organization = str(vri_organization)[str(vri_organization).find("(") + 1:-1]
+                    else:
+                        vri_organization = str(vri_organization)
+                    vri_signCipher = vriInfo.get('signCipher', "")
+                    vri_miOwner = vriInfo.get('miOwner', "")
+                    vri_vrfDate = vriInfo.get('vrfDate', "")
+                    vri_validDate = vriInfo.get('validDate', "")
+                    vri_vriType = vriInfo.get('vriType', "")
+                    if vri_vriType == "1":
+                        vri_vriType = "первичная"
+                    elif vri_vriType == "2":
+                        vri_vriType = "периодическая"
+                    vri_docTitle = vriInfo.get('docTitle', "")
+
+                    if 'applicable' in vriInfo:
+                        vri_applicable = "1"
+
+                        vri_certNum = vriInfo['applicable'].get('certNum', "")
+                        vri_stickerNum = vriInfo['applicable'].get('stickerNum', "")
+                        if 'signPass' in vriInfo['applicable'] and vriInfo['applicable']['signPass']:
+                            vri_signPass = "1"
+                        if 'signMi' in vriInfo['applicable'] and vriInfo['applicable']['signMi']:
+                            vri_signMi = "1"
+
+                    elif 'inapplicable' in vriInfo:
+                        vri_applicable = "0"
+
+                        vri_certNum = vriInfo['inapplicable'].get('noticeNum', "")
+
+                if 'info' in vri['result']:
+                    info = vri['result']['info']
+
+                    vri_structure = info.get('structure', "")
+                    if 'briefIndicator' in info and info['briefIndicator']:
+                        vri_briefIndicator = "1"
+                    vri_briefCharacteristics = info.get('briefCharacteristics', "")
+                    vri_ranges = info.get('ranges', "")
+                    vri_values = info.get('values', "")
+                    vri_channels = info.get('channels', "")
+                    vri_blocks = info.get('blocks', "")
+                    vri_additional_info = info.get('additional_info', "")
+
+            resp_dict['vris'].append({
+                'vri_organization': vri_organization.replace("'", "''"),
+                'vri_signCipher': vri_signCipher,
+                'vri_miOwner': vri_miOwner.replace("'", "''"),
+                'vri_vrfDate': vri_vrfDate,
+                'vri_validDate': vri_validDate,
+                'vri_vriType': vri_vriType,
+                'vri_docTitle': vri_docTitle.replace("'", "''"),
+                'vri_applicable': vri_applicable,
+                'vri_certNum': vri_certNum.replace("'", "''"),
+                'vri_stickerNum': vri_stickerNum.replace("'", "''"),
+                'vri_signPass': vri_signPass,
+                'vri_signMi': vri_signMi,
+                'vri_structure': vri_structure.replace("'", "''"),
+                'vri_briefIndicator': vri_briefIndicator,
+                'vri_briefCharacteristics': vri_briefCharacteristics.replace("'", "''"),
+                'vri_ranges': vri_ranges.replace("'", "''"),
+                'vri_values': vri_values.replace("'", "''"),
+                'vri_channels': vri_channels.replace("'", "''"),
+                'vri_blocks': vri_blocks.replace("'", "''"),
+                'vri_additional_info': vri_additional_info.replace("'", "''"),
+                'vri_FIF_id': vri_FIF_id,
+                'vri_id': vri_id,
+            })
+
+    elif mieta_resp:
+        tmp_dates = list()
+        for mieta in mieta_resp:
+            if mieta:
+                date = QDate().fromString(str(mieta['verification_date'])[:10], "yyyy-MM-dd")
+                tmp_dates.append(date)
+        for mieta in mieta_resp:
+            if max(tmp_dates).toString("yyyy-MM-dd") in mieta['verification_date']:
+                print(mieta['verification_date'])
+                mi_reestr = mieta['mitype_num']
+                mi_title = mieta['mitype']
+                mi_type = mieta['minotation']
+                mi_modification = mieta['modification']
+                mi_manufactureNum = mieta['factory_num']
+                mi_manufactureYear = str(mieta['year'])
+
+    if mit_resp:
+        properties = mit_resp['properties']
+        mi_mit_id = str(mit_resp['id'])
+        for proper in properties:
+            if proper['name'] == "foei:NameSI":
+                mi_title = proper['value']
+            elif proper['name'] == "foei:NumberSI":
+                mi_reestr = proper['value']
+            elif proper['name'] == "foei:DesignationSI":
+                mi_type = ", ".join(proper['value'])
+            elif proper['name'] == "foei:ManufacturerTotalSI":
+                mi_manufacturer = proper['value']
+            elif proper['name'] == "foei:MonthsSI" and int(proper['value']) != 0:
+                mi_interval = str(proper['value'])
+            elif proper['name'] == "foei:YearSI" and proper['value'] != 0:
+                mi_interval = str(int(proper['value']) * 12)
+
+    if mieta_resp:
+        resp_dict['mietas'] = []
+
+        for mieta in mieta_resp:
+            if mieta:
+                vri_FIF_id = mieta.get('vri_FIF_id', "")
+                vri_id = mieta.get('vri_id', "")
+
+                mieta_regNumber = mieta['number']
+                mieta_rankСоdе = mieta.get('rankcode', "")
+                mieta_rankclass = mieta.get('rankclass', "")
+                mieta_npenumber = mieta.get('npenumber', "")
+                mieta_schematype = mieta.get('schematype', "")
+                mieta_schemaTitle = mieta.get('schematitle', "")
+
+                resp_dict['mietas'].append({
+                    'mieta_number': mieta_regNumber,
+                    'mieta_rankcode': mieta_rankСоdе,
+                    'mieta_rankclass': mieta_rankclass,
+                    'mieta_npenumber': mieta_npenumber,
+                    'mieta_schematype': mieta_schematype,
+                    'mieta_schematitle': mieta_schemaTitle.replace("'", "''"),
+                    'vri_FIF_id': vri_FIF_id,
+                    'vri_id': vri_id,
+                })
+
+    resp_dict['mi_reestr'] = mi_reestr
+    resp_dict['mitypeURL'] = mi_mitypeURL
+    resp_dict['mi_title'] = mi_title.replace("'", "''")
+    resp_dict['mi_type'] = mi_type.replace("'", "''")
+    resp_dict['mi_manufacturer'] = mi_manufacturer.replace("'", "''")
+    resp_dict['mi_modification'] = mi_modification.replace("'", "''")
+    resp_dict['mi_MPI'] = mi_interval
+    resp_dict['mi_number'] = mi_manufactureNum.replace("'", "''")
+    resp_dict['mi_inv_number'] = mi_inventoryNum.replace("'", "''")
+    resp_dict['mi_manuf_year'] = mi_manufactureYear
+    resp_dict['quantity'] = mi_quantity
+    resp_dict['mit_id'] = mi_mit_id
+
+    print(resp_dict)
+
+    return resp_dict
 
 
 def get_next_card_number(list_of_card_numbers, new_meas_code="", new_sub_meas_code=""):
