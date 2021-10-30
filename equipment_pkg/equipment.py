@@ -1,17 +1,20 @@
 import json
-from openpyxl import load_workbook
+import time
 from json.decoder import JSONDecodeError
-from PyQt5.QtCore import QRegExp, QThread, pyqtSignal, Qt, QStringListModel, QEvent, QDate, QSortFilterProxyModel, \
-    QItemSelectionModel, pyqtSlot, QSettings, QDateTime
-from PyQt5.QtGui import QStandardItemModel, QStandardItem, QCloseEvent
+
+from PyQt5.QtCore import QThread, pyqtSignal, Qt, QStringListModel, QSortFilterProxyModel, \
+    QItemSelectionModel, QDateTime
+from PyQt5.QtGui import QStandardItemModel, QStandardItem
 from PyQt5.QtWidgets import QApplication, QMainWindow, QInputDialog, QDialog, QMessageBox, QProgressDialog, \
-    QAbstractItemView, QPushButton, QMdiSubWindow
-from functions_pkg.send_get_request import GetRequest
-from equipment_pkg.ui_equipment import Ui_MainWindow
-from functions_pkg.db_functions import MySQLConnection
+    QPushButton, QWidget
+
 import functions_pkg.functions as func
-from equipment_pkg.equipment_import_file import EquipmentImportFileWidget
 from equipment_pkg.equipment_functions import *
+from equipment_pkg.equipment_import_file import EquipmentImportFileWidget
+from equipment_pkg.ui_equipment import Ui_MainWindow
+from equipment_pkg.ui_equipment_add_vri import Ui_Form
+from functions_pkg.db_functions import MySQLConnection
+from functions_pkg.send_get_request import GetRequest
 
 # from equipment_pkg.equipment_requests import send_request
 
@@ -32,6 +35,9 @@ RX_CERT_NUMBER = QRegExp("^(С|И)\-\S{1,3}\/[0-3][0-9]\-[0-1][0-9]\-20[2-5][0-9
 RX_CERT_NUMBER.setCaseSensitivity(False)
 RX_VRI_ID = QRegExp("^([1-2]\-)*\d{1,15}\s*$")
 RX_VRI_ID.setCaseSensitivity(False)
+MANUF_NUMBER_CHARS_MIN_FOR_SCAN = 4  # минимальное количество символов в заводском номере для расширенного поиска
+VRI_COUNT_MAX_FOR_NORMAL_SCAN = 9  # максимальное количество найденных результатов поверки (если больше - отбрасываем всё)
+VRI_COUNT_MAX_FOR_ADV_SCAN = 20  # максимальное количество найденных результатов поверки (если больше - отбрасываем всё)
 
 
 class SearchThread(QThread):
@@ -44,13 +50,13 @@ class SearchThread(QThread):
 
     def run(self):
         if self.is_running:
-            # self.msleep(500)
+            self.msleep(200)
             print("thread running")
             print(f" {self.url}")
             resp = GetRequest.getRequest(self.url)
             print(f"  {resp}")
             print("    thread stopped")
-            self.msleep(1000)
+            # self.msleep(500)
             self.msg_signal.emit(resp)
         else:
             self.msleep(1000)
@@ -59,10 +65,11 @@ class SearchThread(QThread):
 
 class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
-    def __init__(self, parent=None):
-        super(EquipmentWidget, self).__init__(parent)
+    def __init__(self):
+        super(EquipmentWidget, self).__init__()
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
+
         self.search_thread = SearchThread()
 
         self._add_connects()
@@ -84,6 +91,11 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.vri_search = dict()
         self.vri = list()
         self.scan_info = dict()
+
+        self.temp_dict_for_scan = dict()
+        self.mi_id_list = list()
+        self.mieta_scan = list()
+        self.vri_scan = list()
 
         self.tbl_vri_model = QStandardItemModel(0, 7, parent=self)
         self.tbl_mi_model = QStandardItemModel(0, 6, parent=self)
@@ -127,7 +139,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.comboBox_measure_code.addItems(["- Не определено"])
         self.ui.comboBox_measure_code.addItems(sorted(MEASURE_CODES['measure_codes_list']))
 
-    # ДОБАВЛЕНИЕ ПОДВИДОВ ИЗМЕРЕНИЙ В В РАСКРЫВАЮЩИЙСЯ СПИСОК
+    # ДОБАВЛЕНИЕ ПОДВИДОВ ИЗМЕРЕНИЙ В РАСКРЫВАЮЩИЙСЯ СПИСОК
     def _add_measure_subcodes(self, new_code):
         self.ui.comboBox_measure_subcode.clear()
         self.ui.comboBox_measure_subcode.addItems(["- Не определено"])
@@ -161,7 +173,9 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.pushButton_save_mieta.clicked.connect(self._on_save_mieta)
 
         self.ui.pushButton_add_vri.clicked.connect(self._on_add_vri)
-        self.ui.pushButton_find_vri.clicked.connect(self._on_find_vri)
+
+        # НАЖАТИЕ "НАЙТИ ПОВЕРКИ" ДЛЯ ОБОРУДОВАНИЯ
+        self.ui.pushButton_find_vri.clicked.connect(self._on_find_vri_new)
 
         # НАЖАТИЕ КНОПОК ОЧИСТИТЬ НА РАЗНЫХ ВКЛАДКАХ
         self.ui.pushButton_clear_mi_info.clicked.connect(self._clear_mi_tab)
@@ -179,6 +193,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.pushButton_import.clicked.connect(self._on_import)
         # self.ui.pushButton_delete_mi.clicked.connect(self._test)
         self.ui.pushButton_delete_vri.clicked.connect(self._on_delete_vri)
+        self.ui.pushButton_show_vri_info.clicked.connect(self._on_show_vri_info_click)
+
         self.ui.comboBox_status.currentTextChanged.connect(self._on_status_changed)
         self.ui.comboBox_measure_code.currentTextChanged.connect(self._add_measure_subcodes)
         self.ui.comboBox_measure_code.textActivated.connect(self._change_card_number)
@@ -188,6 +204,21 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.checkBox_unlimited.toggled.connect(lambda: self.ui.dateEdit_vri_validDate.setDisabled(
             True) if self.ui.checkBox_unlimited.checkState() == 2 else self.ui.dateEdit_vri_validDate.setEnabled(True))
         # self.ui.lineEdit_reg_card_number.textChanged.connect(self._appearance_init)
+
+    def _on_find_vri_new(self):
+        self.widget = EquipmentAddVri(self)
+        self.widget.setWindowModality(Qt.ApplicationModal)
+        self.widget.show()
+        # self.hide()
+
+    def _on_show_vri_info_click(self):
+        if self.ui.lineEdit_vri_FIF_id.text():
+            self.get_type = "show_vri_info_click"
+            vri_FIF_id = self.ui.lineEdit_vri_FIF_id.text()
+            url = f"https://fgis.gost.ru/fundmetrology/cm/xcdb/vri/select?" \
+                  f"fq=vri_id:{vri_FIF_id}&q=*&rows=100&sort=verification_date+desc"
+            self.search_thread.url = url
+            self.search_thread.start()
 
     def _delete_vri_duplicates(self):
         print("Удаление дубликатов")
@@ -209,44 +240,52 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
     def _full_scan_start(self):
         """
         Создание вспомогательных таблиц для сканирования оборудования
-        Для каждого прибора проверяется условие даты последнего сканирования
         :return:
         """
         self._clear_search_vars()
         self.is_scanning_run = True
-        self.scan_mi_vri_dict = dict()
+        self.temp_dict_for_scan = dict()
         self.mi_id_list = list()
 
         self._delete_vri_duplicates()
 
         for mi_id in self.mi_dict:
-            if not self.mi_dict[mi_id]['last_scan_date']:
-                self.mi_id_list.append(mi_id)
-                self.scan_mi_vri_dict[mi_id] = {}
-                self.scan_mi_vri_dict[mi_id]['reestr'] = self.mi_dict[mi_id]['reestr']
-                self.scan_mi_vri_dict[mi_id]['title'] = self.mi_dict[mi_id]['title']
-                self.scan_mi_vri_dict[mi_id]['number'] = self.mi_dict[mi_id]['number']
-                self.scan_mi_vri_dict[mi_id]['inv_number'] = self.mi_dict[mi_id]['inv_number']
-                self.scan_mi_vri_dict[mi_id]['modification'] = self.mi_dict[mi_id]['modification']
-                self.scan_mi_vri_dict[mi_id]['vris'] = []
-                if mi_id in self.mis_vri_dict:
-                    for vri_id in self.mis_vri_dict[mi_id]:
-                        # if not self.mis_vri_dict[mi_id][vri_id]['vri_last_scan_date']:
+            self.mi_id_list.append(mi_id)
+            self.temp_dict_for_scan[mi_id] = dict()
+            self.temp_dict_for_scan[mi_id]['list_of_vris'] = list()
+            self.temp_dict_for_scan[mi_id]['set_of_vri_FIF_id'] = set()
+            if (self.mi_dict[mi_id]['reestr'] and (
+                    self.mi_dict[mi_id]['number'] or self.mi_dict[mi_id]['inv_number'])) or \
+                    (self.mi_dict[mi_id]['title'] and (
+                            self.mi_dict[mi_id]['number'] or self.mi_dict[mi_id]['inv_number'])):
+                self.temp_dict_for_scan[mi_id]['reestr'] = self.mi_dict[mi_id]['reestr']
+                self.temp_dict_for_scan[mi_id]['title'] = self.mi_dict[mi_id]['title']
+                self.temp_dict_for_scan[mi_id]['number'] = self.mi_dict[mi_id]['number']
+                self.temp_dict_for_scan[mi_id]['inv_number'] = self.mi_dict[mi_id]['inv_number']
+            if mi_id in self.mis_vri_dict:
+                for vri_id in self.mis_vri_dict[mi_id]:
+                    if self.mis_vri_dict[mi_id][vri_id]['vri_FIF_id']:
+                        self.temp_dict_for_scan[mi_id]['set_of_vri_FIF_id'].add(
+                            self.mis_vri_dict[mi_id][vri_id]['vri_FIF_id'])
+                    if not self.mis_vri_dict[mi_id][vri_id]['vri_last_scan_date']:
                         if self.mis_vri_dict[mi_id][vri_id]['vri_certNum'] or \
                                 self.mis_vri_dict[mi_id][vri_id]['vri_mieta_number']:
-                            self.scan_mi_vri_dict[mi_id]['vris'].append((vri_id,
-                                                                         self.mis_vri_dict[mi_id][vri_id][
-                                                                             'vri_certNum'],
-                                                                         self.mis_vri_dict[mi_id][vri_id][
-                                                                             'vri_mieta_number']))
-                    if not self.scan_mi_vri_dict[mi_id]:
-                        self.mi_id_list.remove(mi_id)
-                        self.scan_mi_vri_dict.pop(mi_id)
+                            self.temp_dict_for_scan[mi_id]['list_of_vris'].append((vri_id,
+                                                                                   self.mis_vri_dict[mi_id][vri_id][
+                                                                                       'vri_certNum'],
+                                                                                   self.mis_vri_dict[mi_id][vri_id][
+                                                                                       'vri_mieta_number']))
+            if 'reestr' not in self.temp_dict_for_scan[mi_id] and 'title' not in self.temp_dict_for_scan[mi_id] and \
+                    not self.temp_dict_for_scan[mi_id]['list_of_vris']:
+                self.mi_id_list.remove(mi_id)
+                self.temp_dict_for_scan.pop(mi_id)
 
-        # print(self.scan_mi_vri_dict)
+        if not self.mi_id_list:
+            QMessageBox.information(self, "Сканирование завершено", "Все оборудование проверено. Данные актуальны")
+            return
 
-        for mi_id in self.scan_mi_vri_dict:
-            print("{" + f"'{mi_id}': {self.scan_mi_vri_dict[mi_id]}")
+        for mi_id in self.temp_dict_for_scan:
+            print("{" + f"'{mi_id}': {self.temp_dict_for_scan[mi_id]}")
 
         count = len(self.mi_dict)
         self.progress_dialog = QProgressDialog(self)
@@ -263,80 +302,124 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self._scan_vri()
 
     def _scan_vri(self):
-        """
-        Запуск сканирования оборудования по приоритету имеющейся информации:
-        1. Номер эталона в реестре
-        2. Номер свидетельства о поверке
-        3. Номер в реестре, заводской (инвентарный) номер и модификация
-        4. Наименование, заводской (инвентарный) номер и модификация
-
-        Если есть номер эталона - берем все его vri_id и записываем во временное хранилище
-        Если есть номер свидетельства - ищем его в базе и записываем vri_id во временное хранилище
-        Если это оказался эталон - берем все его vri_id и записываем во временное хранилище
-        Если есть только номер в реестре - ищем в базе поверок по реестру, зав. номеру, модификации
-        vri_id поверки записываем во временное хранилище
-
-        :return:
-        """
-        self.scan_info.clear()
-        self.scan_info['set_of_vri_id'] = set()
-        self.scan_info['set_of_mieta_id'] = set()
-        self.scan_info['list_of_scan_vri'] = list()
-        self.scan_info['list_of_scan_mieta'] = list()
-
-        if self.mi_id_list:
+        # ПЕРВЫЙ ЗАПУСК, СОЗДАНИЕ СЛОВАРЯ
+        if not self.mi_id_scan and self.mi_id_list:
             self.mi_id_scan = self.mi_id_list.pop(0)
             self._on_mi_select(self.mi_id_scan)
-
-            if self.scan_mi_vri_dict[self.mi_id_scan]['vris']:
-                vri_id_scan, \
-                cert_number_scan, \
-                mieta_number_scan = self.scan_mi_vri_dict[self.mi_id_scan]['vris'].pop(0)
-
-                if mieta_number_scan and RX_MIETA.indexIn(mieta_number_scan) == 0:
-                    self.temp_set_of_mieta_numbers.add(mieta_number_scan)
-                    url = f"https://fgis.gost.ru/fundmetrology/cm/xcdb/vri/select?" \
-                          f"q=mieta.number:{mieta_number_scan}&sort=verification_date+desc"
-                    self.search_thread.url = url
-                    self._update_progressbar(self.progress_dialog.maximum() - len(self.mi_id_list),
-                                             f"{mieta_number_scan}\nОсталось {len(self.mi_id_list) + 1} приборов")
-                elif self.cert_number_scan and RX_CERT_NUMBER.indexIn(self.cert_number_scan) == 0:
-                    self.number = f"1-{self.cert_number_scan.rsplit('/', 1)[1]}"
-                    self.search_thread.url = f"{URL_START}/vri/{self.number}"
-                    self._update_progressbar(self.progress_dialog.maximum() - len(self.mi_id_list),
-                                             f"{self.cert_number_scan}\nОсталось {len(self.mi_id_list) + 1} приборов")
-                elif self.cert_number_scan:
-                    cur_year = QDate.currentDate().year()
-                    self.cert_number_scan = str(self.cert_number_scan).replace(" ", "%20")
-                    self.search_thread.url = f"{URL_START}/vri?year={cur_year}&rows=100&search={self.cert_number_scan}"
-        # elif self.reestr_scan and self.number_scan:
-
-        self.search_thread.start()
-
-        if self.progress_dialog.isHidden():
-            self.progress_dialog.show()
-
-    def _get_next_scan_vars(self):
-        # если список поверок в текущем mi_id пуст, то проверяем, есть ли еще приборы в списке приборов
-        # если список приборов не пустой, переходим к следующему mi_id и берем первое vri_id в списке поверок
-        # если пустой - заканчиваем сканирование
-        # если список поверок у текущего оборудования не пустой, берем следующую поверку
-
-        if self.scan_mi_vri_dict[self.mi_id_scan]['vris']:
-            self.vri_id_scan, \
-            self.cert_number_scan, \
-            self.mieta_number_scan = self.scan_mi_vri_dict[self.mi_id_scan]['vris'].pop(0)
-            return True
-        else:
+            self.scan_info.clear()
+            self.scan_info['list_of_vri_id'] = list()
+            self.scan_info['list_of_mieta_id'] = list()
+            self.scan_info['list_of_scan_vri'] = list()
+            self.scan_info['list_of_scan_mieta'] = list()
+            self.scan_info['scan_mit'] = ""
+        # ПЕРЕХОД К СЛЕДУЮЩЕМУ ПРИБОРУ, ОЧИСТКА СЛОВАРЯ
+        elif self.mi_id_scan and not self.temp_dict_for_scan[self.mi_id_scan]['list_of_vris']:
             self._save_scan_info(self.scan_info['scan_mit'], self.scan_info['list_of_scan_vri'],
                                  self.scan_info['list_of_scan_mieta'])
             self._update_mi_table()
             self._update_vri_table(self.mi_id_scan)
-            self._scan_vri()
-            return False
-        self.progress_dialog.close()
-        QMessageBox.information(self, "Завершение сканирования", "Оборудование просканировано. Данные сохранены.")
-        return False
+            self.scan_info.clear()
+            self.scan_info['list_of_vri_id'] = list()
+            self.scan_info['list_of_mieta_id'] = list()
+            self.scan_info['list_of_scan_vri'] = list()
+            self.scan_info['list_of_scan_mieta'] = list()
+            self.scan_info['scan_mit'] = ""
+
+            if self.mi_id_list:
+                self.mi_id_scan = self.mi_id_list.pop(0)
+                self._on_mi_select(self.mi_id_scan)
+            else:
+                self.progress_dialog.close()
+                self.is_scanning_run = False
+                self._refresh_all()
+                QMessageBox.information(self, "Завершение сканирования",
+                                        "Оборудование просканировано. Данные сохранены.")
+                return
+        # ПЕРЕХОД К СЛЕДУЮЩЕЙ (ПЕРВОЙ) ПОВЕРКЕ У ЭТОГО ЖЕ ПРИБОРА
+        if self.mi_id_scan and self.temp_dict_for_scan[self.mi_id_scan]['list_of_vris']:
+            self.vri_id_scan, \
+            cert_number_scan, \
+            mieta_number_scan = self.temp_dict_for_scan[self.mi_id_scan]['list_of_vris'].pop(0)
+
+            if mieta_number_scan and RX_MIETA.indexIn(mieta_number_scan) == 0:
+                self._update_progressbar(self.progress_dialog.maximum() - len(self.mi_id_list),
+                                         f"Эталон № {mieta_number_scan}\n"
+                                         f"Осталось {len(self.mi_id_list) + 1} приборов")
+                self.temp_set_of_mieta_numbers.add(mieta_number_scan)
+                print("1")
+                url = f"https://fgis.gost.ru/fundmetrology/cm/xcdb/vri/select?" \
+                      f"fq=mieta.number:{mieta_number_scan}&q=*&rows=100&sort=verification_date+desc"
+                self.search_thread.url = url
+
+            elif cert_number_scan and RX_CERT_NUMBER.indexIn(cert_number_scan) == 0:
+                self._update_progressbar(self.progress_dialog.maximum() - len(self.mi_id_list),
+                                         f"Свидетельство № {cert_number_scan}\n"
+                                         f"Осталось {len(self.mi_id_list) + 1} приборов")
+                print("1")
+                url = f"https://fgis.gost.ru/fundmetrology/cm/xcdb/vri/select?" \
+                      f"fq=result_docnum:{cert_number_scan}&q=*&rows=100&sort=verification_date+desc"
+                self.search_thread.url = url
+
+            elif cert_number_scan:
+                self._update_progressbar(self.progress_dialog.maximum() - len(self.mi_id_list),
+                                         f"Свидетельство № {cert_number_scan}\n"
+                                         f"Осталось {len(self.mi_id_list) + 1} приборов")
+                if " " in cert_number_scan:
+                    cert_number_scan = str(cert_number_scan).strip()
+                    cert_number_scan = f"*{cert_number_scan.replace(' ', '*&fq=result_docnum:*')}*"
+                print("1")
+                url = f"https://fgis.gost.ru/fundmetrology/cm/xcdb/vri/select?" \
+                      f"fq=result_docnum:{cert_number_scan}&q=*&rows=100&sort=verification_date+desc"
+                self.search_thread.url = url
+        # ЕСЛИ НЕТ НОМЕРОВ СВИДЕТЕЛЬСТВ И ЭТАЛОНОВ, А ЕСТЬ НОМЕР РЕЕСТРА И ЗАВОДСКОЙ НОМЕР
+        elif self.mi_id_scan and \
+                self.temp_dict_for_scan[self.mi_id_scan]['reestr'] and \
+                self.temp_dict_for_scan[self.mi_id_scan]['number']:
+            reestr = self.temp_dict_for_scan[self.mi_id_scan]['reestr']
+
+            number = str(self.temp_dict_for_scan[self.mi_id_scan]['number']).strip()
+            manuf_number = number.replace("(", "\(")
+            manuf_number = manuf_number.replace(")", "\)")
+            manuf_number = f"{manuf_number.replace(' ', '*&fq=mi.number:*')}"
+
+            self._update_progressbar(self.progress_dialog.maximum() - len(self.mi_id_list),
+                                     f"Номер реестра: {reestr}; заводской номер: {number}\n"
+                                     f"Осталось {len(self.mi_id_list) + 1} приборов")
+            print("1")
+            url = f"https://fgis.gost.ru/fundmetrology/cm/xcdb/vri/select?" \
+                  f"fq=mi.mitnumber:{reestr}&" \
+                  f"fq=mi.number:{manuf_number}&" \
+                  f"fl=mieta.number&fl=vri_id&q=*&rows=100&sort=verification_date+desc"
+            self.search_thread.url = url
+        # ЕСЛИ НЕТ РЕЕСТРА, А ЕСТЬ НАИМЕНОВАНИЕ И ЗАВОДСКОЙ НОМЕР
+        elif self.mi_id_scan and \
+                self.temp_dict_for_scan[self.mi_id_scan]['title'] and \
+                self.temp_dict_for_scan[self.mi_id_scan]['number']:
+
+            title = str(self.temp_dict_for_scan[self.mi_id_scan]['title']).strip()
+            finish_title = title.replace("(", "\(")
+            finish_title = finish_title.replace(")", "\)")
+            finish_title = f"{finish_title.replace(' ', '*&fq=mi.mititle:*')}"
+
+            number = str(self.temp_dict_for_scan[self.mi_id_scan]['number']).strip()
+            manuf_number = number.replace("(", "\(")
+            manuf_number = manuf_number.replace(")", "\)")
+            manuf_number = f"{manuf_number.replace(' ', '*&fq=mi.number:*')}"
+
+            self._update_progressbar(self.progress_dialog.maximum() - len(self.mi_id_list),
+                                     f"Наименование: {title}; заводской номер: {number}\n"
+                                     f"Осталось {len(self.mi_id_list) + 1} приборов")
+            print("1")
+            url = f"https://fgis.gost.ru/fundmetrology/cm/xcdb/vri/select?" \
+                  f"fq=mi.mititle:{finish_title}&" \
+                  f"fq=mi.number:{manuf_number}&" \
+                  f"fl=mieta.number&fl=vri_id&q=*&rows=100&sort=verification_date+desc"
+            self.search_thread.url = url
+
+        self.search_thread.start()
+        if self.progress_dialog.isHidden():
+            self.progress_dialog.show()
+        return
 
     def _change_card_number(self):
         mi_id = self.ui.lineEdit_mi_id.text()
@@ -474,15 +557,15 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.tbl_mi_model.clear()
 
         self.tbl_mi_model.setHorizontalHeaderLabels(
-            ["Номер карточки", "Код измерений", "Наименование", "Тип", "Заводской номер", "id"])
+            ["Номер карточки", "Код", "Наименование", "Тип", "Зав. номер", "id"])
         self.ui.tableView_mi_list.setColumnWidth(0, 110)
-        self.ui.tableView_mi_list.setColumnWidth(1, 100)
+        self.ui.tableView_mi_list.setColumnWidth(1, 50)
         self.ui.tableView_mi_list.setColumnWidth(2, 200)
         self.ui.tableView_mi_list.setColumnWidth(3, 100)
-        self.ui.tableView_mi_list.setColumnWidth(4, 110)
+        self.ui.tableView_mi_list.setColumnWidth(4, 100)
         self.ui.tableView_mi_list.setColumnWidth(5, 0)
         for mi_id in self.mi_dict:
-            row = []
+            row = list()
             row.append(QStandardItem(self.mi_dict[mi_id]['reg_card_number']))
             if self.mi_dict[mi_id]['measure_code'] != "0":
                 row.append(QStandardItem(self.mi_dict[mi_id]['measure_code']))
@@ -549,10 +632,10 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             ["Дата поверки", "Годен до", "Номер свидетельства", "Результат", "Организация-поверитель", "Эталон", "id"])
         self.ui.tableView_vri_list.setColumnWidth(0, 85)
         self.ui.tableView_vri_list.setColumnWidth(1, 65)
-        self.ui.tableView_vri_list.setColumnWidth(2, 180)
-        self.ui.tableView_vri_list.setColumnWidth(3, 70)
+        self.ui.tableView_vri_list.setColumnWidth(2, 170)
+        self.ui.tableView_vri_list.setColumnWidth(3, 65)
         self.ui.tableView_vri_list.setColumnWidth(4, 210)
-        self.ui.tableView_vri_list.setColumnWidth(5, 280)
+        self.ui.tableView_vri_list.setColumnWidth(5, 230)
         self.ui.tableView_vri_list.setColumnWidth(6, 0)
         self.ui.tableView_vri_list.resizeRowsToContents()
         self.ui.tableView_vri_list.sortByColumn(1, Qt.DescendingOrder)
@@ -637,6 +720,9 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             last_scan_date = QDate(vri_dict['vri_last_scan_date']).toString("dd.MM.yyyy") \
                 if vri_dict['vri_last_scan_date'] else ""
 
+            last_save_date = QDate(vri_dict['vri_last_save_date']).toString("dd.MM.yyyy") \
+                if vri_dict['vri_last_save_date'] else ""
+
             self.ui.lineEdit_vri_id.setText(vri_id)
             self.ui.lineEdit_vri_FIF_id.setText(vri_dict['vri_FIF_id'])
             self.ui.plainTextEdit_vri_organization.setPlainText(vri_dict['vri_organization'])
@@ -679,6 +765,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             self.ui.lineEdit_mieta_schematype.setText(vri_dict['vri_mieta_schematype'])
             self.ui.plainTextEdit_mieta_schematitle.setPlainText(vri_dict['vri_mieta_schematitle'])
             self.ui.lineEdit_vri_last_scan_date.setText(last_scan_date)
+            self.ui.lineEdit_vri_last_save_date.setText(last_save_date)
 
     # --------------------------------ОБНОВЛЕНИЕ ПОЛЕЙ ОТДЕЛА, СОТРУДНИКОВ И КОМНАТ------------------------------------
     def _update_owner_info(self):
@@ -828,8 +915,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
         reg_card_number = self.ui.lineEdit_reg_card_number.text()
 
-        if mi_id != "NULL" and self.mi_dict[mi_id][
-            'reg_card_number'] != reg_card_number and reg_card_number in self.list_of_card_numbers:
+        if mi_id != "NULL" and self.mi_dict[mi_id]['reg_card_number'] != reg_card_number \
+                and reg_card_number in self.list_of_card_numbers:
             QMessageBox.critical(self, "Ошибка", "Данный номер регистрационной карточки принадлежит другому прибору.\n"
                                                  "Сохранение невозможно")
             return
@@ -1086,8 +1173,11 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                                                      self.workers['worker_dict'])
         room_id = func.get_room_id_from_number(self.ui.comboBox_room.currentText(), self.rooms['room_dict'])
 
-        last_scan_date = f"'{self.mi_dict[mi_id]['last_scan_date']}'" \
-            if self.mi_dict[mi_id]['last_scan_date'] else 'NULL'
+        if mi_id in self.mi_dict:
+            last_scan_date = f"'{self.mi_dict[mi_id]['last_scan_date']}'" \
+                if self.mi_dict[mi_id]['last_scan_date'] else "NULL"
+        else:
+            last_scan_date = "NULL"
 
         sql_replace = f"REPLACE INTO mis (" \
                       f"mi_id, " \
@@ -1154,6 +1244,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                       f"'{self.ui.plainTextEdit_owner_contract.toPlainText()}', " \
                       f"{last_scan_date});"
 
+        print(sql_replace)
+
         MySQLConnection.verify_connection()
         connection = MySQLConnection.create_connection()
         result = MySQLConnection.execute_query(connection, sql_replace)
@@ -1215,14 +1307,11 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         signMi = 1 if (applicable and self.ui.checkBox_vri_signMi.isChecked()) else 0
         briefIndicator = 1 if self.ui.checkBox_vri_briefIndicator.isChecked() else 0
 
-        if self.ui.lineEdit_vri_last_scan_date.text():
-            temp_last_scan_date = QDate().fromString(self.ui.lineEdit_vri_last_scan_date.text(), "dd.MM.yyyy")
-            last_scan_date = temp_last_scan_date.toString("yyyy-MM-dd")
+        if vri_id in self.mis_vri_dict[mi_id]:
+            last_scan_date = f"'{self.mis_vri_dict[mi_id][vri_id]['vri_last_scan_date']}'" \
+                if self.mis_vri_dict[mi_id][vri_id]['vri_last_scan_date'] else "NULL"
         else:
-            last_scan_date = 'NULL'
-
-        # last_scan_date = f"'{self.mis_vri_dict[mi_id][vri_id]['vri_last_scan_date']}'" \
-        #     if self.mis_vri_dict[mi_id][vri_id]['vri_last_scan_date'] else 'NULL'
+            last_scan_date = "NULL"
 
         sql_replace = f"REPLACE INTO mis_vri_info (" \
                       f"vri_id, " \
@@ -1256,7 +1345,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                       f"vri_mieta_npenumber, " \
                       f"vri_mieta_schematype, " \
                       f"vri_mieta_schematitle, " \
-                      f"vri_last_scan_date" \
+                      f"vri_last_scan_date, " \
+                      f"vri_last_save_date" \
                       f") VALUES (" \
                       f"{vri_id}, " \
                       f"{int(mi_id)}, " \
@@ -1289,7 +1379,8 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                       f"'{self.ui.lineEdit_mieta_npenumber.text()}', " \
                       f"'{self.ui.lineEdit_mieta_schematype.text()}', " \
                       f"'{self.ui.plainTextEdit_mieta_schematitle.toPlainText()}', " \
-                      f"{last_scan_date});"
+                      f"{last_scan_date}, " \
+                      f"'{QDate.currentDate().toString('yyyy-MM-dd')}');"
         print(sql_replace)
         MySQLConnection.verify_connection()
         connection = MySQLConnection.create_connection()
@@ -1436,42 +1527,74 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             self._refresh_all()
 
     # -------------------------------------КЛИК ПО КНОПКЕ "НАЙТИ ПОВЕРКИ"----------------------------------------------
-    def _on_find_vri(self):
+    def on_find_vri(self):
+        self._clear_search_vars()
+        self.is_scanning_run = True
+
+        print(VRI_COUNT_MAX_FOR_NORMAL_SCAN)
+        print(MANUF_NUMBER_CHARS_MIN_FOR_SCAN)
+
         mi_id = self.ui.lineEdit_mi_id.text()
         if not mi_id:
+            QMessageBox.critical(self, "Ошибка", "Поиск поверок в не сохраненном оборудовании невозможен")
             return
-        reestr_number = self.ui.lineEdit_reestr.text()
-        manuf_number = self.ui.lineEdit_number.text()
-        self.search_thread.is_running = True
-        if reestr_number and manuf_number:
-            self.get_type = "find_vri"
-            url = f"{URL_START}/vri?year=2020&rows=100&search={reestr_number}%20{manuf_number}"
-            self.search_thread.url = url
-            self.search_thread.start()
+        self.mi_id_list.append(mi_id)
+        self.temp_dict_for_scan[mi_id] = dict()
+        self.temp_dict_for_scan[mi_id]['list_of_vris'] = list()
+        self.temp_dict_for_scan[mi_id]['set_of_vri_FIF_id'] = set()
+        if (self.mi_dict[mi_id]['reestr'] and (
+                self.mi_dict[mi_id]['number'] or self.mi_dict[mi_id]['inv_number'])) or \
+                (self.mi_dict[mi_id]['title'] and (
+                        self.mi_dict[mi_id]['number'] or self.mi_dict[mi_id]['inv_number'])):
+            self.temp_dict_for_scan[mi_id]['reestr'] = self.mi_dict[mi_id]['reestr']
+            self.temp_dict_for_scan[mi_id]['title'] = self.mi_dict[mi_id]['title']
+            self.temp_dict_for_scan[mi_id]['number'] = self.mi_dict[mi_id]['number']
+            self.temp_dict_for_scan[mi_id]['inv_number'] = self.mi_dict[mi_id]['inv_number']
 
-    # --------------------------------ОТВЕТ НА КЛИК ПО КНОПКЕ "НАЙТИ ПОВЕРКИ"------------------------------------------
-    def _on_find_vri_resp(self):
-        if 'result' in self.resp_json and 'count' in self.resp_json['result']:
-            if self.resp_json['result']['count'] > 0:
-                for item in self.resp_json['result']['items']:
-                    if str(item['vri_id']).startswith("1-"):
-                        self.temp_set_of_vri_id.add(str(item['vri_id']))
-        self.eq_type = "vri_id"
-        self.get_type = "vri_id"
-        self.number = self.temp_set_of_vri_id.pop()
+        # Если для оборудования есть поверки, перебираем их.
+        # Все FIF_id добавляем в множество.
+        # Если поверка раньше не сканировалась, добавляем внутренний id поверки, номер свидетельства и номер эталона
+        # как кортеж в список поверок
+        if mi_id in self.mis_vri_dict:
+            for vri_id in self.mis_vri_dict[mi_id]:
+                if self.mis_vri_dict[mi_id][vri_id]['vri_FIF_id']:
+                    self.temp_dict_for_scan[mi_id]['set_of_vri_FIF_id'].add(
+                        self.mis_vri_dict[mi_id][vri_id]['vri_FIF_id'])
+                if not self.mis_vri_dict[mi_id][vri_id]['vri_last_scan_date']:
+                    if self.mis_vri_dict[mi_id][vri_id]['vri_certNum'] or \
+                            self.mis_vri_dict[mi_id][vri_id]['vri_mieta_number']:
+                        self.temp_dict_for_scan[mi_id]['list_of_vris'].append((vri_id,
+                                                                               self.mis_vri_dict[mi_id][vri_id][
+                                                                                   'vri_certNum'],
+                                                                               self.mis_vri_dict[mi_id][vri_id][
+                                                                                   'vri_mieta_number']))
+        if 'reestr' not in self.temp_dict_for_scan[mi_id] \
+                and 'title' not in self.temp_dict_for_scan[mi_id] \
+                and not self.temp_dict_for_scan[mi_id]['list_of_vris']:
+            self.mi_id_list.remove(mi_id)
+            self.temp_dict_for_scan.pop(mi_id)
+
+        if not self.mi_id_list:
+            QMessageBox.information(self, "Сканирование завершено", "Все оборудование проверено. Данные актуальны")
+            return
+
+        for mi_id in self.temp_dict_for_scan:
+            print("{" + f"'{mi_id}': {self.temp_dict_for_scan[mi_id]}")
+
+        count = len(self.mi_dict)
+
         self.progress_dialog = QProgressDialog(self)
         self.progress_dialog.setAutoClose(False)
         self.progress_dialog.setAutoReset(False)
         self.progress_dialog.setWindowTitle("ОЖИДАЙТЕ! Идет поиск!")
-        self.progress_dialog.setCancelButtonText("Прервать")
-        self.progress_dialog.canceled.connect(self._on_search_stopped)
-        self.progress_dialog.setRange(0, 100)
-        self.progress_dialog.setWindowModality(Qt.WindowModal)
+        self.progress_dialog.setCancelButton(None)
+        self.progress_dialog.setRange(0, count)
+        # self.progress_dialog.setWindowModality(Qt.WindowModal)
         self.progress_dialog.resize(350, 100)
         self.progress_dialog.show()
-        url = f"{URL_START}/vri/{self.number}"
-        self.search_thread.url = url
-        self.search_thread.start()
+        self.search_thread.is_running = True
+
+        self._scan_vri()
 
     # -------------------------------------КЛИК ПО КНОПКЕ "ДОБАВИТЬ ОТДЕЛ"---------------------------------------------
     def _on_add_dep(self):
@@ -1660,7 +1783,9 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
             # ЕСЛИ ИЩЕМ ПО НОМЕРУ В РЕЕСТРЕ
             elif self.eq_type == "mit":
-                self.search_thread.url = f"{URL_START}/{self.eq_type}?rows=100&search={self.number}"
+                self.search_thread.url = f"https://fgis.gost.ru/fundmetrology/api/registry/4/data?" \
+                                         f"pageNumber=1&pageSize=20&orgID=CURRENT_ORG&" \
+                                         f"filterBy=foei:NumberSI&filterValues={self.scan_info['reestr']}"
 
             # ЗАПУСКАЕМ ПОИСК
             self.search_thread.start()
@@ -1726,9 +1851,13 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
     # --------------------------------------ОБРАБОТКА ПОЛУЧЕННОГО ОТВЕТА ОТ СЕРВЕРА------------------------------------
     def _on_getting_resp(self, resp):
+        time.sleep(0.1)
         if not resp or resp.startswith("Error") or resp.startswith("<!DOCTYPE html>"):
             if self.is_scanning_run:
                 self.progress_dialog.close()
+            elif self.get_type == "show_vri_info_click":
+                QMessageBox.critical(self, "Ошибка", "Проверьте сетевое соединение")
+                return
             else:
                 self._on_search_stopped()
             if "timed out" in resp:
@@ -1751,53 +1880,108 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 QMessageBox.critical(self, "Ошибка", f"Невозможно распознать ответ от ФГИС \"АРШИН\".\n{resp}")
                 if self.is_scanning_run:
                     self.progress_dialog.close()
+                elif self.get_type == "show_vri_info_click":
+                    return
                 else:
                     self._on_search_stopped()
                 return
 
             if self.resp_json:
 
-                # ЕСЛИ ИЩЕМ ПОВЕРКИ ПО НОМЕРУ В РЕЕСТРЕ И ЗАВОДСКОМУ НОМЕРУ
-                if self.get_type == "find_vri":
-                    self._on_find_vri_resp()
-                    return
+                if self.get_type == "show_vri_info_click":
+                    if 'response' in self.resp_json \
+                            and 'docs' in self.resp_json['response'] \
+                            and self.resp_json['response']['docs']:
+                        resp = self.resp_json['response']['docs'][0]
+                        mitnumber = resp.get('mi.mitnumber', "")
+                        modification = resp.get('mi.modification', "")
+                        number = resp.get('mi.number', "")
+                        mitype = resp.get('mi.mitype', "")
+                        mititle = resp.get('mi.mititle', "")
+                        info = f"Номер госреестра:\t{mitnumber}\n" \
+                               f"Наименование:\t{mititle}\n" \
+                               f"Тип:\t\t\t{mitype}\n" \
+                               f"Модификация:\t{modification}\n" \
+                               f"Заводской номер:\t{number}"
+                        QMessageBox.information(self, "Информация о поверяемом СИ", info)
 
                 # ЕСЛИ ЗАПУСКАЕМ СКАННЕР ОБОРУДОВАНИЯ
                 elif self.is_scanning_run:
-
                     if 'response' not in self.resp_json and 'result' not in self.resp_json:
-                        if self._get_next_scan_vars():
-                            self._scan_vri()
-                        else:
-                            return
+                        self._scan_vri()
+                        return
 
                     if 'xcdb/vri/select?' in self.search_thread.url:
 
-                        if len(self.resp_json['response']['docs']) < 20:
-                            for doc in self.resp_json['response']['docs']:
-                                self.scan_info['set_of_vri_id'].add(doc['vri_id'])
-                                if 'mieta.number' in doc:
-                                    self.scan_info['set_of_mieta_id'].add(doc['mieta.number'])
-
-                        if self.resp_json['response']['docs'] and \
-                                'mi.mitnumber' in self.resp_json['response']['docs'][0] and \
-                                'mi.number' in self.resp_json['response']['docs'][0]:
-                            self.scan_info['reestr'] = self.resp_json['response']['docs'][0]['mi.mitnumber']
-                            self.scan_info['title'] = self.resp_json['response']['docs'][0]['mi.mititle']
-                            self.scan_info['manuf_number'] = self.resp_json['response']['docs'][0]['mi.number']
-
-                            url = f"https://fgis.gost.ru/fundmetrology/cm/xcdb/vri/select?" \
-                                  f"fq=mi.mitnumber:{self.scan_info['reestr']}&" \
-                                  f"fq=mi.number:{self.scan_info['manuf_number']}&" \
-                                  f"fl=mieta.number&fl=vri_id&q=*&rows=100&sort=verification_date+desc"
-                            self.search_thread.url = url
-                            self.search_thread.start()
+                        # ЕСЛИ ЭТО СТАРТОВЫЙ ПОИСК И ЗАПИСЕЙ НЕТ ИЛИ БОЛЬШЕ КОНСТАНТЫ, ИЩЕМ СЛЕДУЮЩИЙ НОМЕР
+                        if 'title' not in self.scan_info \
+                                and "mi.number" not in self.search_thread.url \
+                                and (len(self.resp_json['response']['docs']) == 0
+                                     or len(self.resp_json['response']['docs']) > VRI_COUNT_MAX_FOR_NORMAL_SCAN):
+                            self._scan_vri()
                             return
 
-                        if self.scan_info['set_of_mieta_id']:
-                            mieta_number = self.scan_info['set_of_mieta_id'].pop()
+                        elif len(self.resp_json['response']['docs']) <= VRI_COUNT_MAX_FOR_NORMAL_SCAN or \
+                                ('manuf_number' in self.scan_info and
+                                 len(self.scan_info['manuf_number']) >= MANUF_NUMBER_CHARS_MIN_FOR_SCAN and
+                                 len(self.resp_json['response']['docs']) <= VRI_COUNT_MAX_FOR_ADV_SCAN):
+                            for doc in self.resp_json['response']['docs']:
+                                if 'vri_id' in doc and \
+                                        doc['vri_id'] not in self.scan_info['list_of_vri_id'] and \
+                                        doc['vri_id'] not in self.temp_dict_for_scan[self.mi_id_scan]['set_of_vri_FIF_id']:
+                                    self.scan_info['list_of_vri_id'].append(doc['vri_id'])
+                                    self.temp_dict_for_scan[self.mi_id_scan]['set_of_vri_FIF_id'].add(doc['vri_id'])
+                                if 'mieta.number' in doc and doc['mieta.number'] not in self.scan_info['list_of_mieta_id']:
+                                    self.scan_info['list_of_mieta_id'].append(doc['mieta.number'])
+
+                            # ЭТО СТАРТОВЫЙ ПОИСК
+                            if 'reestr' not in self.scan_info and \
+                                    'title' not in self.scan_info and \
+                                    'manuf_number' not in self.scan_info:
+                                self.scan_info['reestr'] = self.resp_json['response']['docs'][0].get('mi.mitnumber', "")
+                                self.scan_info['title'] = self.resp_json['response']['docs'][0].get('mi.mititle', "")
+                                self.scan_info['manuf_number'] = self.resp_json['response']['docs'][0].get('mi.number',
+                                                                                                           "")
+
+                                if self.scan_info['reestr'] and self.scan_info['manuf_number']:
+                                    manuf_number = str(self.scan_info['manuf_number']).strip()
+                                    manuf_number = manuf_number.replace("(", "\(")
+                                    manuf_number = manuf_number.replace(")", "\)")
+                                    manuf_number = f"{manuf_number.replace(' ', '*&fq=mi.number:*')}"
+
+                                    print("2")
+                                    url = f"https://fgis.gost.ru/fundmetrology/cm/xcdb/vri/select?" \
+                                          f"fq=mi.mitnumber:{self.scan_info['reestr']}&" \
+                                          f"fq=mi.number:{manuf_number}&" \
+                                          f"fl=mieta.number&fl=vri_id&q=*&rows=100&sort=verification_date+desc"
+                                    self.search_thread.url = url
+                                    self.search_thread.start()
+                                    return
+
+                                elif self.scan_info['title'] and self.scan_info['manuf_number']:
+                                    title = str(self.scan_info['title']).strip()
+                                    title = title.replace("(", "\(")
+                                    title = title.replace(")", "\)")
+                                    title = f"{title.replace(' ', '*&fq=mi.mititle:*')}"
+                                    manuf_number = str(self.scan_info['manuf_number']).strip()
+                                    manuf_number = manuf_number.replace("(", "\(")
+                                    manuf_number = manuf_number.replace(")", "\)")
+                                    manuf_number = f"{manuf_number.replace(' ', '*&fq=mi.number:*')}"
+
+                                    print("2")
+                                    url = f"https://fgis.gost.ru/fundmetrology/cm/xcdb/vri/select?" \
+                                          f"fq=mi.mititle:{title}&" \
+                                          f"fq=mi.number:{manuf_number}&" \
+                                          f"fl=mieta.number&fl=vri_id&q=*&rows=100&sort=verification_date+desc"
+                                    self.search_thread.url = url
+                                    self.search_thread.start()
+                                    return
+
+                        if self.scan_info['list_of_mieta_id']:
+                            mieta_number = self.scan_info['list_of_mieta_id'].pop(0)
+                            print("3")
                             url = f"https://fgis.gost.ru/fundmetrology/cm/xcdb/vri/select?" \
-                                  f"q=mieta.number:{mieta_number}&fl=vri_id&sort=verification_date+desc"
+                                  f"fq=mieta.number:{mieta_number}&q=*&fl=vri_id&rows=100&sort=verification_date+desc"
                             self.search_thread.url = url
                             self.search_thread.start()
                             return
@@ -1806,11 +1990,15 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                         self.scan_info['list_of_scan_vri'].append(self.resp_json)
                         self.scan_info['list_of_scan_vri'][len(self.scan_info['list_of_scan_vri']) - 1]['vri_FIF_id'] = \
                             self.search_thread.url.rsplit('/', 1)[1]
-
+                        if self.vri_id_scan:
+                            self.scan_info['list_of_scan_vri'][len(self.scan_info['list_of_scan_vri']) - 1]['vri_id'] = \
+                                self.vri_id_scan
+                            self.vri_id_scan = ""
                         if 'etaMI' in self.resp_json['result']['miInfo']:
                             mieta_number = self.resp_json['result']['miInfo']['etaMI']['regNumber']
+                            print("5")
                             url = f"https://fgis.gost.ru/fundmetrology/cm/icdb/mieta/select?" \
-                                  f"q=number:{mieta_number}"
+                                  f"fq=number:{mieta_number}&q=*&rows=100"
                             self.search_thread.url = url
                             self.search_thread.start()
                             return
@@ -1822,36 +2010,40 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                             self.scan_info['list_of_scan_mieta'].append(self.resp_json['response']['docs'][0])
                             self.scan_info['list_of_scan_mieta'][len(self.scan_info['list_of_scan_mieta']) - 1][
                                 'vri_FIF_id'] = \
-                            self.scan_info['list_of_scan_vri'][len(self.scan_info['list_of_scan_vri']) - 1][
-                                'vri_FIF_id']
+                                self.scan_info['list_of_scan_vri'][len(self.scan_info['list_of_scan_vri']) - 1][
+                                    'vri_FIF_id']
                         else:
                             self.scan_info['list_of_scan_mieta'].append("")
 
                     elif 'api/registry/4/data?' in self.search_thread.url:
-                        if self.resp_json['result']['items']:
-                            self.scan_info['scan_mit'] = self.resp_json['result']['items'][0]
-                        print(self.scan_info['scan_mit'])
-                        print(self.scan_info['list_of_scan_vri'])
-                        print(self.scan_info['list_of_scan_mieta'])
+                        for item in self.resp_json['result']['items']:
+                            for proper in item['properties']:
+                                if proper['name'] == "foei:NumberSI" and \
+                                        proper['value'] == self.scan_info['reestr'] and \
+                                        not self.scan_info['scan_mit']:
+                                    self.scan_info['scan_mit'] = item
+                        self._scan_vri()
+                        return
 
-                        if self._get_next_scan_vars():
-                            self._scan_vri()
-                        else:
-                            return
-
-                    if self.scan_info['set_of_vri_id']:
-                        vri_id = self.scan_info['set_of_vri_id'].pop()
-                        url = f"https://fgis.gost.ru/fundmetrology/cm/iaux/vri/{vri_id}"
+                    if self.scan_info['list_of_vri_id']:
+                        vri_FIF_id = self.scan_info['list_of_vri_id'].pop(0)
+                        print("4")
+                        url = f"https://fgis.gost.ru/fundmetrology/cm/iaux/vri/{vri_FIF_id}"
                         self.search_thread.url = url
                         self.search_thread.start()
                         return
 
-                    url = f"https://fgis.gost.ru/fundmetrology/api/registry/4/data?" \
-                          f"pageNumber=1&pageSize=20&orgID=CURRENT_ORG&" \
-                          f"filterBy=foei:NumberSI&filterValues={self.scan_info['reestr']}&" \
-                          f"filterBy=foei:NameSI&filterValues={self.scan_info['title']}"
-                    self.search_thread.url = url
-                    self.search_thread.start()
+                    if self.scan_info['reestr'] and self.scan_info['title']:
+                        print("6")
+                        url = f"https://fgis.gost.ru/fundmetrology/api/registry/4/data?" \
+                              f"pageNumber=1&pageSize=20&orgID=CURRENT_ORG&" \
+                              f"filterBy=foei:NumberSI&filterValues={self.scan_info['reestr']}&" \
+                              f"filterBy=foei:NameSI&filterValues={self.scan_info['title']}"
+                        self.search_thread.url = url
+                        self.search_thread.start()
+                        return
+
+                    self._scan_vri()
                     return
 
                 # ЕСЛИ ДОБАВЛЯЕМ ОБОРУДОВАНИЕ
@@ -1898,11 +2090,11 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
 
     # СОХРАНЕНИЕ ИНФОРМАЦИИ ПО РЕЗУЛЬТАТАМ ДОБАВЛЕНИЯ ОБОРУДОВАНИЯ ИЗ АРШИНА ПО НОМЕРУ
     def _save_from_arshin(self):
-        save_dict = get_resp_dict(self.mit, self.vri, self.mieta)
+        save_dict = get_resp_dict_new(self.mit, self.vri, self.mieta)
 
         reg_card_number = f"{QDateTime().currentDateTime().toString('dd_MM_yy HH:mm:ss:zzz')}"
         quantity = f"Количество: {save_dict['quantity']}" if save_dict['quantity'] else ""
-        status = "СИ в качестве эталона" if save_dict['mieta_number'] else "СИ"
+        status = "СИ в качестве эталона" if save_dict['mietas'] else "СИ"
 
         sql_insert = f"INSERT INTO mis (" \
                      f"mis_reg_card_number, " \
@@ -2028,97 +2220,166 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                          f"vri_last_scan_date='{QDate.currentDate().toString('yyyy-MM-dd')}' " \
                          f"WHERE vri_mi_id={int(self.mi_id_scan)};"
             MySQLConnection.execute_query(connection, sql_update)
+
+            sql_update = f"UPDATE mis SET " \
+                         f"mi_last_scan_date='{QDate.currentDate().toString('yyyy-MM-dd')}' " \
+                         f"WHERE mi_id={int(self.mi_id_scan)};"
+            MySQLConnection.execute_query(connection, sql_update)
+
             connection.close()
+            self._update_mi_dicts()
             self._update_vri_dicts()
             return
 
-        mi_status = "СИ в качестве эталона" if scan_dict['mietas'] else "СИ"
-        sql_update = f"UPDATE mis SET " \
-                     f"mi_status='{mi_status}', " \
-                     f"mi_reestr='{scan_dict['mi_reestr']}', " \
-                     f"mi_title='{scan_dict['mi_title']}', " \
-                     f"mi_type='{scan_dict['mi_type']}', " \
-                     f"mi_modification='{scan_dict['mi_modification']}', " \
-                     f"mi_number='{scan_dict['mi_number']}', " \
-                     f"mi_inv_number='{scan_dict['mi_inv_number']}', " \
-                     f"mi_manufacturer='{scan_dict['mi_manufacturer']}', " \
-                     f"mi_manuf_year='{scan_dict['mi_manuf_year']}', " \
-                     f"mi_MPI='{scan_dict['mi_MPI']}', " \
-                     f"mi_last_scan_date='{QDate.currentDate().toString('yyyy-MM-dd')}' " \
-                     f"WHERE mi_id={int(self.mi_id_scan)};"
+        sql_update_list = list()
+        if scan_dict['mietas']:
+            sql_update_list.append("mi_status='СИ в качестве эталона'")
+        if not self.mi_dict[self.mi_id_scan]['reestr'] and scan_dict['mi_reestr']:
+            sql_update_list.append(f"mi_reestr='{scan_dict['mi_reestr']}'")
+        if not self.mi_dict[self.mi_id_scan]['title'] and scan_dict['mi_title']:
+            sql_update_list.append(f"mi_title='{scan_dict['mi_title']}'")
+        if not self.mi_dict[self.mi_id_scan]['type'] and scan_dict['mi_type']:
+            sql_update_list.append(f"mi_type='{scan_dict['mi_type']}'")
+        if not self.mi_dict[self.mi_id_scan]['modification'] and scan_dict['mi_modification']:
+            sql_update_list.append(f"mi_modification='{scan_dict['mi_modification']}'")
+        if not self.mi_dict[self.mi_id_scan]['number'] and scan_dict['mi_number']:
+            sql_update_list.append(f"mi_number='{scan_dict['mi_number']}'")
+        if not self.mi_dict[self.mi_id_scan]['inv_number'] and scan_dict['mi_inv_number']:
+            sql_update_list.append(f"mi_inv_number='{scan_dict['mi_inv_number']}'")
+        if not self.mi_dict[self.mi_id_scan]['manufacturer'] and scan_dict['mi_manufacturer']:
+            sql_update_list.append(f"mi_manufacturer='{scan_dict['mi_manufacturer']}'")
+        if not self.mi_dict[self.mi_id_scan]['manuf_year'] and scan_dict['mi_manuf_year']:
+            sql_update_list.append(f"mi_manuf_year='{scan_dict['mi_manuf_year']}'")
+        if not self.mi_dict[self.mi_id_scan]['MPI'] and scan_dict['mi_MPI']:
+            sql_update_list.append(f"mi_MPI='{scan_dict['mi_MPI']}'")
 
-        MySQLConnection.execute_query(connection, sql_update)
+        if sql_update_list:
+            sql_update = f"UPDATE mis SET " + ", ".join(sql_update_list) + f" WHERE mi_id={int(self.mi_id_scan)};"
+            print(sql_update)
+            MySQLConnection.execute_query(connection, sql_update)
+
         self._update_mi_dicts()
         self._update_mi_table()
 
+        # sql_update = f"UPDATE mis SET " \
+        #              f"mi_status='{mi_status}', " \
+        #              f"mi_reestr='{scan_dict['mi_reestr']}', " \
+        #              f"mi_title='{scan_dict['mi_title']}', " \
+        #              f"mi_type='{scan_dict['mi_type']}', " \
+        #              f"mi_modification='{scan_dict['mi_modification']}', " \
+        #              f"mi_number='{scan_dict['mi_number']}', " \
+        #              f"mi_inv_number='{scan_dict['mi_inv_number']}', " \
+        #              f"mi_manufacturer='{scan_dict['mi_manufacturer']}', " \
+        #              f"mi_manuf_year='{scan_dict['mi_manuf_year']}', " \
+        #              f"mi_MPI='{scan_dict['mi_MPI']}', " \
+        #              f"mi_last_scan_date='{QDate.currentDate().toString('yyyy-MM-dd')}' " \
+        #              f"WHERE mi_id={int(self.mi_id_scan)};"
+        if self.mi_dict[self.mi_id_scan]['last_scan_date']:
+            last_scan_date = QDate(self.mi_dict[self.mi_id_scan]['last_scan_date'])
+        else:
+            last_scan_date = QDate(1981, 4, 2)
         for vri_info in scan_dict['vris']:
-            # vri_info = scan_dict['vris'][0]
-            sql_insert = f"INSERT INTO mis_vri_info (" \
-                         f"vri_id, " \
-                         f"vri_mi_id, " \
-                         f"vri_organization, " \
-                         f"vri_signCipher, " \
-                         f"vri_miOwner, " \
-                         f"vri_vrfDate, " \
-                         f"vri_validDate, " \
-                         f"vri_vriType, " \
-                         f"vri_docTitle, " \
-                         f"vri_applicable, " \
-                         f"vri_certNum, " \
-                         f"vri_stickerNum, " \
-                         f"vri_signPass, " \
-                         f"vri_signMi, " \
-                         f"vri_inapplicable_reason, " \
-                         f"vri_structure, " \
-                         f"vri_briefIndicator, " \
-                         f"vri_briefCharacteristics, " \
-                         f"vri_ranges, " \
-                         f"vri_values, " \
-                         f"vri_channels, " \
-                         f"vri_blocks, " \
-                         f"vri_additional_info, " \
-                         f"vri_info, " \
-                         f"vri_FIF_id, " \
-                         f"vri_mieta_number, " \
-                         f"vri_mieta_rankcode, " \
-                         f"vri_mieta_rankclass, " \
-                         f"vri_mieta_npenumber, " \
-                         f"vri_mieta_schematype, " \
-                         f"vri_mieta_schematitle" \
-                         f") VALUES (" \
-                         f"NULL, " \
-                         f"{int(self.mi_id_scan)}, " \
-                         f"'{vri_info['vri_organization']}', " \
-                         f"'{vri_info['vri_signCipher']}', " \
-                         f"'{vri_info['vri_miOwner']}', " \
-                         f"'{vri_info['vri_vrfDate']}', " \
-                         f"'{vri_info['vri_validDate']}', " \
-                         f"'{vri_info['vri_vriType']}', " \
-                         f"'{vri_info['vri_docTitle']}', " \
-                         f"{int(vri_info['vri_applicable'])}, " \
-                         f"'{vri_info['vri_certNum']}', " \
-                         f"'{vri_info['vri_stickerNum']}', " \
-                         f"{int(vri_info['vri_signPass'])}, " \
-                         f"{int(vri_info['vri_signMi'])}, " \
-                         f"'', " \
-                         f"'{vri_info['vri_structure']}', " \
-                         f"{int(vri_info['vri_briefIndicator'])}, " \
-                         f"'{vri_info['vri_briefCharacteristics']}', " \
-                         f"'{vri_info['vri_ranges']}', " \
-                         f"'{vri_info['vri_values']}', " \
-                         f"'{vri_info['vri_channels']}', " \
-                         f"'{vri_info['vri_blocks']}', " \
-                         f"'', " \
-                         f"'', " \
-                         f"'{vri_info['vri_FIF_id']}', " \
-                         f"'', " \
-                         f"'', " \
-                         f"'', " \
-                         f"'', " \
-                         f"'', " \
-                         f"'')"
-            print(sql_insert)
-            MySQLConnection.execute_query(connection, sql_insert)
+            vrf_date = QDate.fromString(vri_info['vri_vrfDate'], "dd.MM.yyyy")
+            print(vrf_date, last_scan_date)
+            if vrf_date < last_scan_date:
+                print("пропускаем")
+            else:
+                print("записываем")
+            if vri_info['vri_id']:
+                sql_update = f"UPDATE mis_vri_info SET " \
+                             f"vri_organization='{vri_info['vri_organization']}', " \
+                             f"vri_signCipher='{vri_info['vri_signCipher']}', " \
+                             f"vri_miOwner='{vri_info['vri_miOwner']}', " \
+                             f"vri_vrfDate='{vri_info['vri_vrfDate']}', " \
+                             f"vri_validDate='{vri_info['vri_validDate']}', " \
+                             f"vri_vriType='{vri_info['vri_vriType']}', " \
+                             f"vri_docTitle='{vri_info['vri_docTitle']}', " \
+                             f"vri_applicable={int(vri_info['vri_applicable'])}, " \
+                             f"vri_certNum='{vri_info['vri_certNum']}', " \
+                             f"vri_stickerNum='{vri_info['vri_stickerNum']}', " \
+                             f"vri_signPass={int(vri_info['vri_signPass'])}, " \
+                             f"vri_signMi={int(vri_info['vri_signMi'])}, " \
+                             f"vri_structure='{vri_info['vri_structure']}', " \
+                             f"vri_briefIndicator={int(vri_info['vri_briefIndicator'])}, " \
+                             f"vri_briefCharacteristics='{vri_info['vri_briefCharacteristics']}', " \
+                             f"vri_ranges='{vri_info['vri_ranges']}', " \
+                             f"vri_values='{vri_info['vri_values']}', " \
+                             f"vri_channels='{vri_info['vri_channels']}', " \
+                             f"vri_blocks='{vri_info['vri_blocks']}', " \
+                             f"vri_additional_info='{vri_info['vri_additional_info']}', " \
+                             f"vri_FIF_id='{vri_info['vri_FIF_id']}', " \
+                             f"vri_last_scan_date='{QDate.currentDate().toString('yyyy-MM-dd')}'" \
+                             f"WHERE vri_id={int(vri_info['vri_id'])};"
+                MySQLConnection.execute_query(connection, sql_update)
+
+            else:
+                sql_insert = f"INSERT INTO mis_vri_info (" \
+                             f"vri_id, " \
+                             f"vri_mi_id, " \
+                             f"vri_organization, " \
+                             f"vri_signCipher, " \
+                             f"vri_miOwner, " \
+                             f"vri_vrfDate, " \
+                             f"vri_validDate, " \
+                             f"vri_vriType, " \
+                             f"vri_docTitle, " \
+                             f"vri_applicable, " \
+                             f"vri_certNum, " \
+                             f"vri_stickerNum, " \
+                             f"vri_signPass, " \
+                             f"vri_signMi, " \
+                             f"vri_inapplicable_reason, " \
+                             f"vri_structure, " \
+                             f"vri_briefIndicator, " \
+                             f"vri_briefCharacteristics, " \
+                             f"vri_ranges, " \
+                             f"vri_values, " \
+                             f"vri_channels, " \
+                             f"vri_blocks, " \
+                             f"vri_additional_info, " \
+                             f"vri_info, " \
+                             f"vri_FIF_id, " \
+                             f"vri_mieta_number, " \
+                             f"vri_mieta_rankcode, " \
+                             f"vri_mieta_rankclass, " \
+                             f"vri_mieta_npenumber, " \
+                             f"vri_mieta_schematype, " \
+                             f"vri_mieta_schematitle," \
+                             f"vri_last_scan_date" \
+                             f") VALUES (" \
+                             f"NULL, " \
+                             f"{int(self.mi_id_scan)}, " \
+                             f"'{vri_info['vri_organization']}', " \
+                             f"'{vri_info['vri_signCipher']}', " \
+                             f"'{vri_info['vri_miOwner']}', " \
+                             f"'{vri_info['vri_vrfDate']}', " \
+                             f"'{vri_info['vri_validDate']}', " \
+                             f"'{vri_info['vri_vriType']}', " \
+                             f"'{vri_info['vri_docTitle']}', " \
+                             f"{int(vri_info['vri_applicable'])}, " \
+                             f"'{vri_info['vri_certNum']}', " \
+                             f"'{vri_info['vri_stickerNum']}', " \
+                             f"{int(vri_info['vri_signPass'])}, " \
+                             f"{int(vri_info['vri_signMi'])}, " \
+                             f"'', " \
+                             f"'{vri_info['vri_structure']}', " \
+                             f"{int(vri_info['vri_briefIndicator'])}, " \
+                             f"'{vri_info['vri_briefCharacteristics']}', " \
+                             f"'{vri_info['vri_ranges']}', " \
+                             f"'{vri_info['vri_values']}', " \
+                             f"'{vri_info['vri_channels']}', " \
+                             f"'{vri_info['vri_blocks']}', " \
+                             f"'{vri_info['vri_additional_info']}', " \
+                             f"'', " \
+                             f"'{vri_info['vri_FIF_id']}', " \
+                             f"'', " \
+                             f"'', " \
+                             f"'', " \
+                             f"'', " \
+                             f"'', " \
+                             f"'', " \
+                             f"'{QDate.currentDate().toString('yyyy-MM-dd')}');"
+                MySQLConnection.execute_query(connection, sql_insert)
 
         for mieta_info in scan_dict['mietas']:
             sql_update = f"UPDATE mis_vri_info SET " \
@@ -2129,14 +2390,20 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                          f"vri_mieta_schematype='{mieta_info['mieta_schematype']}', " \
                          f"vri_mieta_schematitle='{mieta_info['mieta_schematitle']}' " \
                          f"WHERE vri_FIF_id='{mieta_info['vri_FIF_id']}';"
-            print(sql_update)
             MySQLConnection.execute_query(connection, sql_update)
+        self._update_vri_dicts()
 
-        # for vri_id in self.mis_vri_dict[self.mi_id_scan]:
-        #     sql_update = f"UPDATE mis_vri_info SET " \
-        #                  f"vri_last_scan_date='{QDate.currentDate().toString('yyyy-MM-dd')}' " \
-        #                  f"WHERE vri_id={int(vri_id)};"
-        # MySQLConnection.execute_query(connection, sql_update)
+        sql_update = f"UPDATE mis SET " \
+                     f"mi_last_scan_date='{QDate.currentDate().toString('yyyy-MM-dd')}' " \
+                     f"WHERE mi_id={int(self.mi_id_scan)};"
+        MySQLConnection.execute_query(connection, sql_update)
+
+        for vri_id in self.mis_vri_dict[self.mi_id_scan]:
+            if not self.mis_vri_dict[self.mi_id_scan][vri_id]['vri_last_scan_date']:
+                sql_update = f"UPDATE mis_vri_info SET " \
+                             f"vri_last_scan_date='{QDate.currentDate().toString('yyyy-MM-dd')}' " \
+                             f"WHERE vri_id={int(vri_id)};"
+                MySQLConnection.execute_query(connection, sql_update)
 
         self._update_vri_dicts()
         connection.close()
@@ -2224,8 +2491,9 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
     # -------------------------------------------ОБРАБОТКА VRI_SEARCH--------------------------------------------------
     def _get_vri_search(self):
         # получаем self.vri_search
-        if "search" in self.search_thread.url and 'result' in self.resp_json and 'count' in self.resp_json[
-            'result']:
+        if "search" in self.search_thread.url \
+                and 'result' in self.resp_json \
+                and 'count' in self.resp_json['result']:
             if self.resp_json['result']['count'] == 0:
                 self.progress_dialog.close()
                 QMessageBox.critical(self, "Ошибка",
@@ -2455,8 +2723,10 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.cert_number_scan = ""
         self.mieta_number_scan = ""
         self.mit_scan = ""
-        self.mieta_scan = []
-        self.vri_scan = []
+        self.mieta_scan.clear()
+        self.vri_scan.clear()
+        self.temp_dict_for_scan.clear()
+        self.mi_id_list.clear()
 
     # ----------------------------------------ОБНОВЛЕНИЕ ПРОГРЕССА ПОИСКА----------------------------------------------
     def _update_progressbar(self, val, text):
@@ -2499,6 +2769,27 @@ class CustomSortingModel(QSortFilterProxyModel):
             data_right = QDate.fromString(data_right, "dd.MM.yyyy")
 
         return data_left < data_right
+
+
+class EquipmentAddVri(QWidget):
+    def __init__(self, parent):
+        super(EquipmentAddVri, self).__init__()
+        self.ui = Ui_Form()
+        self.ui.setupUi(self)
+
+        self.parent = parent
+
+        self.ui.pushButton_start_search.clicked.connect(self.on_start_search)
+
+    def on_start_search(self):
+        global MANUF_NUMBER_CHARS_MIN_FOR_SCAN
+        global VRI_COUNT_MAX_FOR_NORMAL_SCAN
+        global VRI_COUNT_MAX_FOR_ADV_SCAN
+        MANUF_NUMBER_CHARS_MIN_FOR_SCAN = int(self.ui.spinBox_min_len_value.value())
+        VRI_COUNT_MAX_FOR_NORMAL_SCAN = int(self.ui.spinBox_norm_search_max_count.value())
+        VRI_COUNT_MAX_FOR_ADV_SCAN = int(self.ui.spinBox_adv_search_max_count.value())
+        self.hide()
+        self.parent.on_find_vri()
 
 
 if __name__ == "__main__":

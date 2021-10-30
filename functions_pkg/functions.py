@@ -405,7 +405,8 @@ def get_mis_vri_info():
                      'vri_mieta_npenumber': vri_info[28],
                      'vri_mieta_schematype': vri_info[29],
                      'vri_mieta_schematitle': vri_info[30],
-                     'vri_last_scan_date': vri_info[31]}
+                     'vri_last_scan_date': vri_info[31],
+                     'vri_last_save_date': vri_info[32]}
         if str(vri_info[1]) not in mis_vri_dict:
             mis_vri_dict[str(vri_info[1])] = dict()
             mis_vri_dict[str(vri_info[1])][str(vri_info[0])] = temp_dict
@@ -452,6 +453,15 @@ def dot_to_comma(string):
     return string.replace(".", ",")
 
 
+# УДАЛЕНИЕ ДУБЛИКАТОВ ИЗ ПОСЛЕДОВАТЕЛЬНОСТИ С СОХРАНЕНИЕМ ПОРЯДКА ЭЛЕМЕНТОВ
+def dedupe(items):
+    seen = set()
+    for item in items:
+        if item not in seen:
+            yield item
+            seen.add(item)
+
+
 def get_max_substring(str_1, str_2):
     SZ = int(1e5 + 4)
     hashpow = 137
@@ -495,4 +505,3 @@ def get_max_substring(str_1, str_2):
     # print(str_2[get(lo)[1]:get(lo)[1] + lo])
     # print(lo, get(lo))
     return lo, get(lo)[0], get(lo)[1]
-

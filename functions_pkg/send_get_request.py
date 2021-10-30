@@ -2,7 +2,7 @@ import requests
 from requests.exceptions import HTTPError
 from requests.exceptions import Timeout
 
-TIMEOUT = 5
+TIMEOUT = 60
 
 class GetRequest:
     def getRequest(url):
