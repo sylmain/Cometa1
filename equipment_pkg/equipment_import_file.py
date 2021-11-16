@@ -804,7 +804,7 @@ class EquipmentImportFileWidget(QWidget):
                          f"NULL);"
         # print(sql_insert_mis)
         MySQLConnection.verify_connection()
-        connection = MySQLConnection.create_connection()
+        connection = MySQLConnection.get_connection()
         result = MySQLConnection.execute_query(connection, sql_insert_mis)
 
         if result[0]:

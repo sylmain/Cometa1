@@ -10,13 +10,11 @@ from PyQt5.QtWidgets import QApplication, QMainWindow, QInputDialog, QDialog, QM
 
 import functions_pkg.functions as func
 import equipment_pkg.equipment_functions as eq_func
+from equipment_pkg.equipment_add_vri import EquipmentAddVri
 from equipment_pkg.equipment_import_file import EquipmentImportFileWidget
 from equipment_pkg.ui_equipment import Ui_MainWindow
-from equipment_pkg.ui_equipment_add_vri import Ui_Form
 from functions_pkg.db_functions import MySQLConnection
 from functions_pkg.send_get_request import GetRequest
-
-# from equipment_pkg.equipment_requests import send_request
 
 STATUS_LIST = ["СИ", "СИ в качестве эталона", "Эталон единицы величины"]
 VRI_TYPE_LIST = ["периодическая", "первичная"]
@@ -35,32 +33,9 @@ RX_CERT_NUMBER = QRegExp("^(С|И)\-\S{1,3}\/[0-3][0-9]\-[0-1][0-9]\-20[2-5][0-9
 RX_CERT_NUMBER.setCaseSensitivity(False)
 RX_VRI_ID = QRegExp("^([1-2]\-)*\d{1,15}\s*$")
 RX_VRI_ID.setCaseSensitivity(False)
-MANUF_NUMBER_CHARS_MIN_FOR_SCAN = 4  # минимальное количество символов в заводском номере для расширенного поиска
+MANUF_NUMBER_MIN_LENGTH_FOR_SCAN = 4  # минимальное количество символов в заводском номере для расширенного поиска
 VRI_COUNT_MAX_FOR_NORMAL_SCAN = 9  # максимальное количество найденных результатов поверки (если больше - отбрасываем всё)
 VRI_COUNT_MAX_FOR_ADV_SCAN = 20  # максимальное количество найденных результатов поверки (если больше - отбрасываем всё)
-
-
-class SearchThread(QThread):
-    msg_signal = pyqtSignal(str)
-
-    def __init__(self, parent=None):
-        QThread.__init__(self, parent)
-        self.url = ""
-        self.is_running = True
-
-    def run(self):
-        if self.is_running:
-            self.msleep(200)
-            print("thread running")
-            print(f" {self.url}")
-            resp = GetRequest.getRequest(self.url)
-            print(f"  {resp}")
-            print("    thread stopped")
-            # self.msleep(500)
-            self.msg_signal.emit(resp)
-        else:
-            self.msleep(1000)
-            self.msg_signal.emit("stop")
 
 
 class EquipmentWidget(QMainWindow, Ui_MainWindow):
@@ -156,8 +131,6 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
     # ДОБАВЛЕНИЕ СОБЫТИЙ И СВЯЗЫВАНИЕ С МЕТОДАМИ
     def _add_connects(self):
 
-        self.ui.pushButton_show_reserve_equipment.clicked.connect(self.select_next_vri_in_vri_table)
-
         # ПРИ НАЖАТИИ "ДОБАВИТЬ ОБОРУДОВАНИЕ ИЗ ФГИС АРШИН" ЗАПУСКАЕМ ФОРМУ ВВОДА НОМЕРА
         self.ui.toolButton_equip_add.clicked.connect(self._on_start_search)
 
@@ -183,7 +156,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.pushButton_add_vri.clicked.connect(self._on_add_vri)
 
         # НАЖАТИЕ "НАЙТИ ПОВЕРКИ" ДЛЯ ОБОРУДОВАНИЯ
-        self.ui.pushButton_find_vri.clicked.connect(self._on_find_vri_new)
+        self.ui.pushButton_find_vri.clicked.connect(self._show_vri_search_window)
 
         # НАЖАТИЕ КНОПОК ОЧИСТИТЬ НА РАЗНЫХ ВКЛАДКАХ
         self.ui.pushButton_clear_mi_info.clicked.connect(self._clear_mi_tab)
@@ -211,27 +184,29 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         self.ui.tabWidget.currentChanged.connect(self._on_tab_changed)
         self.ui.checkBox_unlimited.toggled.connect(lambda: self.ui.dateEdit_vri_validDate.setDisabled(
             True) if self.ui.checkBox_unlimited.checkState() == 2 else self.ui.dateEdit_vri_validDate.setEnabled(True))
-        # self.ui.lineEdit_reg_card_number.textChanged.connect(self._appearance_init)
 
-    def select_next_vri_in_vri_table(self):
-        if self.tbl_vri_proxy_model.rowCount() > 0:
-            vri_id = self.tbl_vri_proxy_model.index(1, 6).data()
-            # if vri_id:
-            #     self._update_vri_and_mieta_tab(vri_id)
-            # self.eq_func.select_vri(tbl_vri_proxy_model.index(1, 6))
-            self.ui.tableView_vri_list.selectRow(1)
+    def _show_vri_search_window(self):
+        add_vri_widget = EquipmentAddVri()
+        add_vri_widget.setWindowModality(Qt.ApplicationModal)
+
+        add_vri_widget.set_manuf_number(self.mi_dict[self.ui.lineEdit_mi_id.text()]['number'])
+        add_vri_widget.set_title(self.mi_dict[self.ui.lineEdit_mi_id.text()]['title'])
+        add_vri_widget.set_reestr(self.mi_dict[self.ui.lineEdit_mi_id.text()]['reestr'])
+        add_vri_widget.start_searching_signal.connect(self._start_searching, Qt.QueuedConnection)
+        add_vri_widget.show()
+
+    def _start_searching(self, a, b, c):
+        if a > 0:
+            min_length = int(a)
         else:
-            self._clear_vri_tab()
-            self._clear_mieta_tab()
+            min_length = MANUF_NUMBER_MIN_LENGTH_FOR_SCAN
+        print(min_length)
+        # print(self.mi_dict)
 
-    def _on_find_vri_new(self):
-        self.add_vri_widget = EquipmentAddVri(self)
-        self.add_vri_widget.setWindowModality(Qt.ApplicationModal)
-        self.add_vri_widget.ui.lineEdit_manuf_number.setText(self.mi_dict[self.ui.lineEdit_mi_id.text()]['number'])
-        self.add_vri_widget.ui.plainTextEdit_title.setPlainText(self.mi_dict[self.ui.lineEdit_mi_id.text()]['title'])
-        self.add_vri_widget.ui.lineEdit_reestr.setText(self.mi_dict[self.ui.lineEdit_mi_id.text()]['reestr'])
-        self.add_vri_widget.show()
-        # self.hide()
+        # manuf_number_min_length_for_scan = MANUF_NUMBER_MIN_LENGTH_FOR_SCAN  # минимальное количество символов в заводском номере для расширенного поиска
+        # VRI_COUNT_MAX_FOR_NORMAL_SCAN = 9  # максимальное количество найденных результатов поверки (если больше - отбрасываем всё)
+        # VRI_COUNT_MAX_FOR_ADV_SCAN = 20  # максимальное количество найденных результатов поверки (если больше - отбрасываем всё)
+
 
     def clear_all_tabs(self):
         """
@@ -421,10 +396,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         for mi_id in self.mi_dict:
             row = list()
             row.append(QStandardItem(self.mi_dict[mi_id]['reg_card_number']))
-            if self.mi_dict[mi_id]['measure_code'] != "0":
-                row.append(QStandardItem(self.mi_dict[mi_id]['measure_code']))
-            else:
-                row.append(QStandardItem(""))
+            row.append(QStandardItem(self.mi_dict[mi_id]['measure_code']))
             row.append(QStandardItem(self.mi_dict[mi_id]['title']))
             row.append(QStandardItem(self.mi_dict[mi_id]['modification']))
             row.append(QStandardItem(self.mi_dict[mi_id]['number']))
@@ -1085,7 +1057,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                       f"{last_scan_date});"
 
         MySQLConnection.verify_connection()
-        connection = MySQLConnection.create_connection()
+        connection = MySQLConnection.get_connection()
         result = MySQLConnection.execute_query(connection, sql_replace)
 
         if result[0]:
@@ -1337,7 +1309,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         print(sql_replace)
 
         MySQLConnection.verify_connection()
-        connection = MySQLConnection.create_connection()
+        connection = MySQLConnection.get_connection()
         result = MySQLConnection.execute_query(connection, sql_replace)
 
         if result[0]:
@@ -1473,7 +1445,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                       f"'{QDate.currentDate().toString('yyyy-MM-dd')}');"
         print(sql_replace)
         MySQLConnection.verify_connection()
-        connection = MySQLConnection.create_connection()
+        connection = MySQLConnection.get_connection()
         result = MySQLConnection.execute_query(connection, sql_replace)
         connection.close()
         if result[0]:
@@ -1505,7 +1477,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                       f"vri_mieta_rankclass = '{self.ui.lineEdit_mieta_rank_title.text()}' " \
                       f"WHERE vri_id = '{int(vri_id)}';"
         MySQLConnection.verify_connection()
-        connection = MySQLConnection.create_connection()
+        connection = MySQLConnection.get_connection()
         MySQLConnection.execute_query(connection, sql_replace)
         connection.close()
 
@@ -1536,7 +1508,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                 sql_delete_2 = f"DELETE FROM mis_departments WHERE MD_mi_id = {int(mi_id)}"
                 sql_delete_3 = f"DELETE FROM mis_vri_info WHERE vri_mi_id = {int(mi_id)}"
                 MySQLConnection.verify_connection()
-                connection = MySQLConnection.create_connection()
+                connection = MySQLConnection.get_connection()
                 MySQLConnection.execute_transaction_query(connection, sql_delete_1, sql_delete_2, sql_delete_3)
                 connection.close()
 
@@ -1576,7 +1548,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
         if not delete_confirm or result == 0:
             sql_delete = f"DELETE FROM mis_vri_info WHERE vri_id = {int(vri_id)}"
             MySQLConnection.verify_connection()
-            connection = MySQLConnection.create_connection()
+            connection = MySQLConnection.get_connection()
             MySQLConnection.execute_transaction_query(connection, sql_delete)
             connection.close()
 
@@ -1611,7 +1583,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
             sql_delete_2 = f"TRUNCATE mis_departments"
             sql_delete_3 = f"TRUNCATE mis_vri_info"
             MySQLConnection.verify_connection()
-            connection = MySQLConnection.create_connection()
+            connection = MySQLConnection.get_connection()
             MySQLConnection.execute_transaction_query(connection, sql_delete_1, sql_delete_2, sql_delete_3)
             connection.close()
             self._refresh_all()
@@ -1943,7 +1915,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                         if ("mi.mitnumber" in self.search_thread.url or "mi.mititle" in self.search_thread.url) \
                                 and "mi.number" in self.search_thread.url:
                             if (len(self.temp_dict_for_scan[self.mi_id_scan][
-                                        'number']) >= MANUF_NUMBER_CHARS_MIN_FOR_SCAN
+                                        'number']) >= MANUF_NUMBER_MIN_LENGTH_FOR_SCAN
                                 and len(self.resp_json['response']['docs']) <= VRI_COUNT_MAX_FOR_ADV_SCAN) \
                                     or len(self.resp_json['response']['docs']) <= VRI_COUNT_MAX_FOR_NORMAL_SCAN:
                                 if self.resp_json['response']['docs']:
@@ -2177,7 +2149,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
                      f")"
         print(sql_insert)
         MySQLConnection.verify_connection()
-        connection = MySQLConnection.create_connection()
+        connection = MySQLConnection.get_connection()
         result = MySQLConnection.execute_query(connection, sql_insert)
         if result[0]:
             mi_id = result[1]
@@ -2262,7 +2234,7 @@ class EquipmentWidget(QMainWindow, Ui_MainWindow):
     def _save_scan_info(self, mit_scan=None, vri_scan=None, mieta_scan=None):
         scan_dict = self.eq_func.get_dict_with_scan_results_for_db(mit_scan, vri_scan, mieta_scan)
         MySQLConnection.verify_connection()
-        connection = MySQLConnection.create_connection()
+        connection = MySQLConnection.get_connection()
 
         # Если никакие результаты для прибора не найдены, записываем дату сканирования в поверки, обновляем
         # словарь поверок и выходим
@@ -2814,33 +2786,29 @@ class CustomSortingModel(QSortFilterProxyModel):
 
         return data_left < data_right
 
+class SearchThread(QThread):
+    msg_signal = pyqtSignal(str)
 
-class EquipmentAddVri(QWidget):
-    def __init__(self, parent):
-        super(EquipmentAddVri, self).__init__()
-        self.ui = Ui_Form()
-        self.ui.setupUi(self)
-        self.setWindowTitle("Поиск и добавление поверок")
+    def __init__(self, parent=None):
+        QThread.__init__(self, parent)
+        self.url = ""
+        self.is_running = True
 
-        self.parent = parent
+    def run(self):
+        if self.is_running:
+            self.msleep(200)
+            print("thread running")
+            print(f" {self.url}")
+            resp = GetRequest.getRequest(self.url)
+            print(f"  {resp}")
+            print("    thread stopped")
+            # self.msleep(500)
+            self.msg_signal.emit(resp)
+        else:
+            self.msleep(1000)
+            self.msg_signal.emit("stop")
 
-        self.ui.groupBox_search_settings.setDisabled(True)
 
-        self.ui.pushButton_start_search.clicked.connect(self.on_start_search)
-
-        self.ui.radioButton_search.toggled.connect(
-            lambda: self.ui.groupBox_search_settings.setEnabled(True) if self.ui.radioButton_search.isChecked()
-            else self.ui.groupBox_search_settings.setDisabled(True))
-
-    def on_start_search(self):
-        if self.ui.radioButton_search.isChecked():
-            global MANUF_NUMBER_CHARS_MIN_FOR_SCAN
-            global VRI_COUNT_MAX_FOR_NORMAL_SCAN
-            global VRI_COUNT_MAX_FOR_ADV_SCAN
-            MANUF_NUMBER_CHARS_MIN_FOR_SCAN = int(self.ui.spinBox_min_len_value.value())
-            VRI_COUNT_MAX_FOR_NORMAL_SCAN = int(self.ui.spinBox_norm_search_max_count.value())
-            VRI_COUNT_MAX_FOR_ADV_SCAN = int(self.ui.spinBox_adv_search_max_count.value())
-            self.parent.on_find_vri()
 
 
 if __name__ == "__main__":

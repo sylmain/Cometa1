@@ -17,4 +17,12 @@ SETTINGS_DIR_STRING = QDir.absolutePath(SETTINGS_DIR)
 SETTINGS = QSettings(SETTINGS_PATH_STRING, QSettings.IniFormat)
 SETTINGS.setIniCodec("UTF-8")
 
+HOST = SETTINGS.value("connect/hosp")
+PORT = SETTINGS.value("connect/port")
+USER = SETTINGS.value("connect/user")
+PWD = SETTINGS.value("connect/pwd")
+DB_NAME = 'cometa'
+
 URL_START = "https://fgis.gost.ru/fundmetrology/eapi"
+MI_STATUS_LIST = ["СИ", "СИ в качестве эталона"]
+VRI_TYPE_LIST = ["периодическая", "первичная"]

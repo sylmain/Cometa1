@@ -3,7 +3,7 @@ from functions_pkg.db_functions import MySQLConnection
 
 def get_departments():
     MySQLConnection.verify_connection()
-    connection = MySQLConnection.create_connection()
+    connection = MySQLConnection.get_connection()
 
     sql_select = "SELECT * from departments ORDER BY dep_id"
     result = MySQLConnection.execute_read_query(connection, sql_select)
@@ -50,7 +50,7 @@ def get_dep_id_from_number(dep_number, dep_dict):
 
 def get_workers():
     MySQLConnection.verify_connection()
-    connection = MySQLConnection.create_connection()
+    connection = MySQLConnection.get_connection()
 
     sql_select = "SELECT * FROM workers ORDER BY worker_surname"
     result = MySQLConnection.execute_read_query(connection, sql_select)
@@ -83,7 +83,7 @@ def get_worker_deps():
     dep_workers_dict = dict()
     worker_deps_dict = dict()
     MySQLConnection.verify_connection()
-    connection = MySQLConnection.create_connection()
+    connection = MySQLConnection.get_connection()
 
     sql_select = "SELECT * from workers_departments"
     result = MySQLConnection.execute_read_query(connection, sql_select)
@@ -153,7 +153,7 @@ def get_worker_fio_and_number_from_id(worker_id, worker_dict):
 
 def get_rooms():
     MySQLConnection.verify_connection()
-    connection = MySQLConnection.create_connection()
+    connection = MySQLConnection.get_connection()
 
     sql_select = "SELECT * FROM rooms"
     result = MySQLConnection.execute_read_query(connection, sql_select)
@@ -189,7 +189,7 @@ def get_room_deps():
     dep_rooms_dict = dict()
     room_deps_dict = dict()
     MySQLConnection.verify_connection()
-    connection = MySQLConnection.create_connection()
+    connection = MySQLConnection.get_connection()
 
     sql_select = "SELECT * from rooms_departments"
     result = MySQLConnection.execute_read_query(connection, sql_select)
@@ -240,10 +240,7 @@ def get_measure_codes():
     measure_codes_list = list()
     measure_sub_codes_dict = dict()
     sql_select = "SELECT * FROM measure_codes ORDER BY measure_code"
-    MySQLConnection.verify_connection()
-    connection = MySQLConnection.create_connection()
-    result = MySQLConnection.execute_read_query(connection, sql_select)
-    connection.close()
+    result = MySQLConnection.execute_read_query(sql_select)
     for code in result:
         measure_codes_dict[code[0]] = code[1]
         if len(code[0]) < 4:
@@ -255,9 +252,6 @@ def get_measure_codes():
                 measure_sub_codes_dict[measure_code].append(f"{code[0]} {code[1]}")
             else:
                 measure_sub_codes_dict[measure_code].append(f"{code[0]} {code[1]}")
-    # print(measure_codes_dict)
-    # print(measure_sub_codes_dict)
-    # print(measure_codes_list)
     print("get_measure_codes")
 
     return {'measure_codes_dict': measure_codes_dict, 'measure_codes_list': measure_codes_list,
@@ -282,12 +276,9 @@ def get_mis():
     set_of_mi = set()
     list_of_card_numbers = list()
     sql_select = "SELECT * FROM mis ORDER BY mi_id"
-    MySQLConnection.verify_connection()
-    connection = MySQLConnection.create_connection()
-    result = MySQLConnection.execute_read_query(connection, sql_select)
-    connection.close()
+    result = MySQLConnection.execute_read_query(sql_select) or []
     for mi in result:
-        mi_dict[str(mi[0])] = {'reg_card_number': mi[1],
+        mi_dict[mi[0]] = {'reg_card_number': mi[1],
                                'measure_code': str(mi[2]),
                                'status': mi[3],
                                'reestr': mi[4],
@@ -305,14 +296,14 @@ def get_mis():
                                'other_characteristics': mi[16],
                                'MPI': mi[17],
                                'purpose': mi[18],
-                               'responsible_person': str(mi[19]),
+                               'responsible_person': mi[19],
                                'personal': mi[20],
-                               'room': str(mi[21]),
+                               'room': mi[21],
                                'software_inner': mi[22],
                                'software_outer': mi[23],
-                               'RE': str(mi[24]),
-                               'pasport': str(mi[25]),
-                               'MP': str(mi[26]),
+                               'RE': mi[24],
+                               'pasport': mi[25],
+                               'MP': mi[26],
                                'TO_period': mi[27],
                                'owner': mi[28],
                                'owner_contract': mi[29],
@@ -346,7 +337,7 @@ def get_mi_deps():
 
     sql_select = "SELECT * from mis_departments"
     MySQLConnection.verify_connection()
-    connection = MySQLConnection.create_connection()
+    connection = MySQLConnection.get_connection()
     result = MySQLConnection.execute_read_query(connection, sql_select)
     connection.close()
 
@@ -371,10 +362,7 @@ def get_mi_deps():
 def get_mis_vri_info():
     mis_vri_dict = dict()
     sql_select = "SELECT * FROM mis_vri_info ORDER BY vri_mi_id, vri_id"
-    MySQLConnection.verify_connection()
-    connection = MySQLConnection.create_connection()
-    result = MySQLConnection.execute_read_query(connection, sql_select)
-    connection.close()
+    result = MySQLConnection.execute_read_query(sql_select) or []
     for vri_info in result:
         temp_dict = {'vri_organization': vri_info[2],
                      'vri_signCipher': vri_info[3],
@@ -383,14 +371,14 @@ def get_mis_vri_info():
                      'vri_validDate': vri_info[6],
                      'vri_vriType': vri_info[7],
                      'vri_docTitle': vri_info[8],
-                     'vri_applicable': str(vri_info[9]),
+                     'vri_applicable': vri_info[9],
                      'vri_certNum': vri_info[10],
                      'vri_stickerNum': vri_info[11],
-                     'vri_signPass': str(vri_info[12]),
-                     'vri_signMi': str(vri_info[13]),
+                     'vri_signPass': vri_info[12],
+                     'vri_signMi': vri_info[13],
                      'vri_inapplicable_reason': vri_info[14],
                      'vri_structure': vri_info[15],
-                     'vri_briefIndicator': str(vri_info[16]),
+                     'vri_briefIndicator': vri_info[16],
                      'vri_briefCharacteristics': vri_info[17],
                      'vri_ranges': vri_info[18],
                      'vri_values': vri_info[19],
@@ -407,41 +395,33 @@ def get_mis_vri_info():
                      'vri_mieta_schematitle': vri_info[30],
                      'vri_last_scan_date': vri_info[31],
                      'vri_last_save_date': vri_info[32]}
-        if str(vri_info[1]) not in mis_vri_dict:
-            mis_vri_dict[str(vri_info[1])] = dict()
-            mis_vri_dict[str(vri_info[1])][str(vri_info[0])] = temp_dict
+        if vri_info[1] not in mis_vri_dict:
+            mis_vri_dict[vri_info[1]] = dict()
+            mis_vri_dict[vri_info[1]][vri_info[0]] = temp_dict
         else:
-            mis_vri_dict[str(vri_info[1])][str(vri_info[0])] = temp_dict
+            mis_vri_dict[vri_info[1]][vri_info[0]] = temp_dict
     print("get_mis_vri_info")
 
     return {'mis_vri_dict': mis_vri_dict, 'reserve': 'reserve'}
 
 
 def get_organization_name():
-    MySQLConnection.verify_connection()
-    connection = MySQLConnection.create_connection()
-    sql_string = f"SELECT org_short_name FROM organization_info"
-    name = MySQLConnection.execute_read_query(connection, sql_string)
-    connection.close()
+    sql = f"SELECT org_short_name FROM organization_info"
+    name = MySQLConnection.execute_read_query(sql)[0][0] or ""
     return name[0][0]
 
 
 def get_director_name():
-    MySQLConnection.verify_connection()
-    connection = MySQLConnection.create_connection()
-    sql_string = f"SELECT org_boss FROM organization_info"
-    result = MySQLConnection.execute_read_query(connection, sql_string)
-    connection.close()
+    sql = f"SELECT org_boss FROM organization_info"
+    result = MySQLConnection.execute_read_query(sql)
     name = ""
-    full_name = str(result[0][0])
-    full_name_parts = full_name.split()
+    full_name_parts = result[0][0].split()
     if len(full_name_parts) == 1:
         name = full_name_parts[0]
     elif len(full_name_parts) == 2:
         name = f"{full_name_parts[0]} {full_name_parts[1][:1]}."
     elif len(full_name_parts) == 3:
         name = f"{full_name_parts[0]} {full_name_parts[1][:1]}.{full_name_parts[2][:1]}."
-
     return name
 
 

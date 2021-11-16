@@ -235,7 +235,7 @@ class WorkersWidget(QWidget):
             phone = self.ui.lineEdit_worker_phone.text()
 
         MySQLConnection.verify_connection()
-        connection = MySQLConnection.create_connection()
+        connection = MySQLConnection.get_connection()
         sql_replace = f"REPLACE INTO workers " \
                       f"VALUES (" \
                       f"{worker_id}, " \
@@ -313,7 +313,7 @@ class WorkersWidget(QWidget):
                            f"WHERE WD_worker_id = {int(worker_id)}"
 
             MySQLConnection.verify_connection()
-            connection = MySQLConnection.create_connection()
+            connection = MySQLConnection.get_connection()
             MySQLConnection.execute_transaction_query(connection, sql_delete_1, sql_delete_2)
             print(sql_delete_1)
             print(sql_delete_2)
@@ -326,7 +326,7 @@ class WorkersWidget(QWidget):
         cur_dep_name = self.ui.treeView.currentIndex().parent().data()
         cur_dep_id = func.get_dep_id_from_name(cur_dep_name, self.dep_dict)
         MySQLConnection.verify_connection()
-        connection = MySQLConnection.create_connection()
+        connection = MySQLConnection.get_connection()
 
         if cur_dep_name == self.reserve_name:
             sql_update = f"UPDATE workers_departments SET " \
@@ -379,7 +379,7 @@ class WorkersWidget(QWidget):
     def _add_to_dep(self, worker_id, dep_id):
 
         MySQLConnection.verify_connection()
-        connection = MySQLConnection.create_connection()
+        connection = MySQLConnection.get_connection()
         sql_insert = f"INSERT INTO workers_departments VALUES " \
                      f"({int(worker_id)}, " \
                      f"{int(dep_id)})"
@@ -400,7 +400,7 @@ class WorkersWidget(QWidget):
                          f"WD_worker_id = {int(worker_id)} AND " \
                          f"WD_dep_id = {int(dep_id)}"
             MySQLConnection.verify_connection()
-            connection = MySQLConnection.create_connection()
+            connection = MySQLConnection.get_connection()
             MySQLConnection.execute_transaction_query(connection, sql_delete)
             connection.close()
         else:
@@ -430,7 +430,7 @@ class WorkersWidget(QWidget):
                          f"WHERE dep_id = {int(dep_id)}"
             print(sql_update)
             MySQLConnection.verify_connection()
-            connection = MySQLConnection.create_connection()
+            connection = MySQLConnection.get_connection()
             MySQLConnection.execute_query(connection, sql_update)
             connection.close()
             return
@@ -454,7 +454,7 @@ class WorkersWidget(QWidget):
                            f"dep_boss_assistant = {int(new_boss_id)}"
             print(sql_update_1, sql_update_2)
             MySQLConnection.verify_connection()
-            connection = MySQLConnection.create_connection()
+            connection = MySQLConnection.get_connection()
             MySQLConnection.execute_transaction_query(connection, sql_update_1, sql_update_2)
             connection.close()
         if self.dep_dict[dep_id]['boss_assistant'] == worker_id:
@@ -473,7 +473,7 @@ class WorkersWidget(QWidget):
                          f"WHERE dep_id = {int(dep_id)}"
             print(sql_update)
             MySQLConnection.verify_connection()
-            connection = MySQLConnection.create_connection()
+            connection = MySQLConnection.get_connection()
             MySQLConnection.execute_query(connection, sql_update)
             connection.close()
 
@@ -503,7 +503,7 @@ class WorkersWidget(QWidget):
                          f"WHERE room_responsible_person = {int(worker_id)}"
             print(sql_update)
             MySQLConnection.verify_connection()
-            connection = MySQLConnection.create_connection()
+            connection = MySQLConnection.get_connection()
             MySQLConnection.execute_query(connection, sql_update)
             connection.close()
             return
@@ -524,7 +524,7 @@ class WorkersWidget(QWidget):
                          f"WHERE room_responsible_person = {int(worker_id)}"
             print(sql_update)
             MySQLConnection.verify_connection()
-            connection = MySQLConnection.create_connection()
+            connection = MySQLConnection.get_connection()
             MySQLConnection.execute_query(connection, sql_update)
             connection.close()
 
@@ -650,7 +650,7 @@ class WorkersWidget(QWidget):
                               f"WHERE dep_id = {int(dep_id)}"
 
         MySQLConnection.verify_connection()
-        connection = MySQLConnection.create_connection()
+        connection = MySQLConnection.get_connection()
         MySQLConnection.execute_query(connection, sql_update_deps)
         connection.close()
         self._clear_worker_area()
@@ -673,7 +673,7 @@ class WorkersWidget(QWidget):
                               f"dep_id = {int(dep_id)}"
 
         MySQLConnection.verify_connection()
-        connection = MySQLConnection.create_connection()
+        connection = MySQLConnection.get_connection()
         MySQLConnection.execute_query(connection, sql_update_deps)
         connection.close()
         self._clear_worker_area()
