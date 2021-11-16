@@ -19,7 +19,7 @@ class OrganizationWidget(QWidget):
 
     def is_org_exist(self):
         MySQLConnection.verify_connection()
-        connection = MySQLConnection.create_connection()
+        connection = MySQLConnection.get_connection()
         sql_is_exist = "SELECT COUNT(*) FROM organization_info"
         result = MySQLConnection.execute_read_query(connection, sql_is_exist)
         if result[0][0] != 0:
@@ -27,7 +27,7 @@ class OrganizationWidget(QWidget):
 
     def read_data(self):
         MySQLConnection.verify_connection()
-        connection = MySQLConnection.create_connection()
+        connection = MySQLConnection.get_connection()
         sql_is_exist = "SELECT * FROM organization_info WHERE org_id = 1"
         result = MySQLConnection.execute_read_query(connection, sql_is_exist)
         connection.close()
@@ -46,7 +46,7 @@ class OrganizationWidget(QWidget):
 
     def save_data(self):
         MySQLConnection.verify_connection()
-        connection = MySQLConnection.create_connection()
+        connection = MySQLConnection.get_connection()
         sql_replace = f"""REPLACE INTO organization_info VALUES
                         (1, 
                         '{self.ui.textEdit_full_name.toPlainText()}',

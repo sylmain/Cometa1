@@ -158,7 +158,7 @@ class DepartmentsWidget(QWidget):
         self._make_current_treeview_list(self.tree_view_model.invisibleRootItem())
 
         MySQLConnection.verify_connection()
-        connection = MySQLConnection.create_connection()
+        connection = MySQLConnection.get_connection()
         for dep in self.current_treeview_list:
             update_sql = f"UPDATE departments SET " \
                          f"dep_parent = {int(dep[2])} " \
@@ -256,7 +256,7 @@ class DepartmentsWidget(QWidget):
         if ok and result:
             dep_name = result
             MySQLConnection.verify_connection()
-            connection = MySQLConnection.create_connection()
+            connection = MySQLConnection.get_connection()
             create_dep = f"INSERT INTO departments (dep_id, dep_name, dep_parent) VALUES " \
                          f"(NULL, '{dep_name}', {int(dep_parent_id)});"
 
@@ -297,7 +297,7 @@ class DepartmentsWidget(QWidget):
             self._delete_dep_list(
                 self.tree_view_model.itemFromIndex(self.ui.treeView.currentIndex()))
             MySQLConnection.verify_connection()
-            connection = MySQLConnection.create_connection()
+            connection = MySQLConnection.get_connection()
             for dep_id in self.delete_id_list:
                 delete_sql = f"DELETE FROM departments WHERE dep_id = {dep_id};"
 
@@ -350,7 +350,7 @@ class DepartmentsWidget(QWidget):
         boss_assistant_id = func.get_worker_id_from_fio(self.ui.comboBox_dep_boss_assistant.currentText(),
                                                         self.worker_dict)
         MySQLConnection.verify_connection()
-        connection = MySQLConnection.create_connection()
+        connection = MySQLConnection.get_connection()
         sql_update_deps = f"UPDATE departments SET " \
                           f"dep_name = '{self.ui.textEdit_dep_name.toPlainText()}', " \
                           f"dep_abbr = '{self.ui.lineEdit_dep_abbr.text()}', " \

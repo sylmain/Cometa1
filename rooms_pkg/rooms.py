@@ -239,7 +239,7 @@ class RoomsWidget(QWidget):
 
         if len(room_set) > 0:
             MySQLConnection.verify_connection()
-            connection = MySQLConnection.create_connection()
+            connection = MySQLConnection.get_connection()
             for room in room_set:
                 if room != "":
                     insert_sql_1 = f"INSERT IGNORE INTO rooms (room_number) VALUES " \
@@ -299,7 +299,7 @@ class RoomsWidget(QWidget):
             room_owner = self.ui.plainTextEdit_rent.toPlainText()
 
         MySQLConnection.verify_connection()
-        connection = MySQLConnection.create_connection()
+        connection = MySQLConnection.get_connection()
         rooms_sql = f"UPDATE rooms " \
                     f"SET " \
                     f"room_number = '{self.ui.lineEdit_room_number.text()}', " \
@@ -344,7 +344,7 @@ class RoomsWidget(QWidget):
                        f"RD_room_id = {int(room_id)}"
 
             MySQLConnection.verify_connection()
-            connection = MySQLConnection.create_connection()
+            connection = MySQLConnection.get_connection()
             MySQLConnection.execute_transaction_query(connection, delete_1, delete_2)
             connection.close()
             self._create_tree_view_model()
@@ -420,7 +420,7 @@ class RoomsWidget(QWidget):
         sql_update = f"DELETE FROM rooms_departments " \
                      f"WHERE RD_room_id = {int(room_id)} AND RD_dep_id = {int(dep_id)}"
         MySQLConnection.verify_connection()
-        connection = MySQLConnection.create_connection()
+        connection = MySQLConnection.get_connection()
         MySQLConnection.execute_query(connection, sql_update)
         connection.close()
         self._create_tree_view_model()
@@ -432,7 +432,7 @@ class RoomsWidget(QWidget):
                      f"SET RD_room_id = {int(room_id)}, RD_dep_id = {int(new_dep_id)} " \
                      f"WHERE RD_room_id = {int(room_id)} AND RD_dep_id = {int(old_dep_id)}"
         MySQLConnection.verify_connection()
-        connection = MySQLConnection.create_connection()
+        connection = MySQLConnection.get_connection()
         MySQLConnection.execute_query(connection, sql_update)
         connection.close()
         self._create_tree_view_model()
@@ -443,7 +443,7 @@ class RoomsWidget(QWidget):
         sql_insert = f"INSERT INTO rooms_departments VALUES " \
                      f"({int(room_id)}, {int(dep_id)})"
         MySQLConnection.verify_connection()
-        connection = MySQLConnection.create_connection()
+        connection = MySQLConnection.get_connection()
         MySQLConnection.execute_query(connection, sql_insert)
         connection.close()
         self._create_tree_view_model()
@@ -467,7 +467,7 @@ class RoomsWidget(QWidget):
                          f"room_responsible_person = 0 " \
                          f"WHERE room_id = {int(room_id)}"
             MySQLConnection.verify_connection()
-            connection = MySQLConnection.create_connection()
+            connection = MySQLConnection.get_connection()
             MySQLConnection.execute_query(connection, sql_update)
             connection.close()
             return
@@ -486,7 +486,7 @@ class RoomsWidget(QWidget):
                          f"room_responsible_person = {int(new_resp_person_id)} " \
                          f"WHERE room_id = {int(room_id)}"
             MySQLConnection.verify_connection()
-            connection = MySQLConnection.create_connection()
+            connection = MySQLConnection.get_connection()
             MySQLConnection.execute_query(connection, sql_update)
             connection.close()
 
