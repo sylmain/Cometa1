@@ -1,3 +1,5 @@
+from PyQt5.QtCore import QDate
+
 from functions_pkg.db_functions import MySQLConnection
 from collections import defaultdict
 
@@ -395,6 +397,11 @@ def dedupe(items):
         if item not in seen:
             yield item
             seen.add(item)
+
+
+def get_formatted_date(date) -> str:
+    formatted_date = QDate(date).toString("dd.MM.yyyy") if date else ""
+    return formatted_date
 
 
 def get_max_substring(str_1, str_2):

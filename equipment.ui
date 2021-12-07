@@ -6,7 +6,7 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>1254</width>
+    <width>1241</width>
     <height>719</height>
    </rect>
   </property>
@@ -49,7 +49,7 @@
            <property name="geometry">
             <rect>
              <x>0</x>
-             <y>-151</y>
+             <y>-241</y>
              <width>695</width>
              <height>891</height>
             </rect>
@@ -64,7 +64,7 @@
                <enum>QTabWidget::Rounded</enum>
               </property>
               <property name="currentIndex">
-               <number>2</number>
+               <number>0</number>
               </property>
               <widget class="QWidget" name="tab_mi_info">
                <attribute name="title">
@@ -91,6 +91,18 @@
                   <layout class="QGridLayout" name="gridLayout_4">
                    <item row="0" column="2" colspan="2">
                     <widget class="QGroupBox" name="groupBox_11">
+                     <property name="sizePolicy">
+                      <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+                       <horstretch>0</horstretch>
+                       <verstretch>0</verstretch>
+                      </sizepolicy>
+                     </property>
+                     <property name="minimumSize">
+                      <size>
+                       <width>0</width>
+                       <height>80</height>
+                      </size>
+                     </property>
                      <property name="title">
                       <string>Наличие периодической поверки</string>
                      </property>
@@ -100,6 +112,12 @@
                      <layout class="QGridLayout" name="gridLayout_2">
                       <item row="0" column="0">
                        <widget class="QRadioButton" name="radioButton_MPI_yes">
+                        <property name="minimumSize">
+                         <size>
+                          <width>0</width>
+                          <height>24</height>
+                         </size>
+                        </property>
                         <property name="text">
                          <string>Да</string>
                         </property>
@@ -619,14 +637,20 @@
                    <item row="0" column="1">
                     <widget class="QLineEdit" name="lineEdit_reg_card_number">
                      <property name="sizePolicy">
-                      <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+                      <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
                        <horstretch>0</horstretch>
                        <verstretch>0</verstretch>
                       </sizepolicy>
                      </property>
+                     <property name="minimumSize">
+                      <size>
+                       <width>175</width>
+                       <height>0</height>
+                      </size>
+                     </property>
                      <property name="maximumSize">
                       <size>
-                       <width>200</width>
+                       <width>175</width>
                        <height>16777215</height>
                       </size>
                      </property>
@@ -739,10 +763,16 @@
                    <item row="0" column="3">
                     <widget class="QComboBox" name="comboBox_status">
                      <property name="sizePolicy">
-                      <sizepolicy hsizetype="Preferred" vsizetype="Fixed">
+                      <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
                        <horstretch>0</horstretch>
                        <verstretch>0</verstretch>
                       </sizepolicy>
+                     </property>
+                     <property name="minimumSize">
+                      <size>
+                       <width>175</width>
+                       <height>0</height>
+                      </size>
                      </property>
                      <property name="maximumSize">
                       <size>
@@ -2528,21 +2558,24 @@
            <enum>QFrame::Sunken</enum>
           </property>
           <layout class="QHBoxLayout" name="horizontalLayout_10">
+           <property name="spacing">
+            <number>15</number>
+           </property>
            <item>
             <widget class="QPushButton" name="pushButton_save_mi_info">
              <property name="minimumSize">
               <size>
-               <width>140</width>
+               <width>165</width>
                <height>0</height>
               </size>
              </property>
              <property name="text">
-              <string>Сохранить информацию</string>
+              <string>Сохранить изменения</string>
              </property>
             </widget>
            </item>
            <item>
-            <spacer name="horizontalSpacer_11">
+            <spacer name="horizontalSpacer_15">
              <property name="orientation">
               <enum>Qt::Horizontal</enum>
              </property>
@@ -2553,6 +2586,19 @@
               </size>
              </property>
             </spacer>
+           </item>
+           <item>
+            <widget class="QPushButton" name="pushButton_undo_mi_changes">
+             <property name="minimumSize">
+              <size>
+               <width>165</width>
+               <height>23</height>
+              </size>
+             </property>
+             <property name="text">
+              <string>Отменить изменения</string>
+             </property>
+            </widget>
            </item>
            <item>
             <widget class="QPushButton" name="pushButton_clear_mi_info">
@@ -2814,7 +2860,7 @@
     <rect>
      <x>0</x>
      <y>0</y>
-     <width>1254</width>
+     <width>1241</width>
      <height>21</height>
     </rect>
    </property>

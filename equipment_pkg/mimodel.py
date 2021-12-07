@@ -1,9 +1,10 @@
-from PyQt5.QtCore import Qt, QModelIndex, QAbstractTableModel, QDate, QSortFilterProxyModel, QVariant
-from PyQt5 import QtGui
-from PyQt5.QtGui import QFont
-import equipment_pkg.sql_functions as sql_func
 import typing
 
+from PyQt5 import QtGui
+from PyQt5.QtCore import Qt, QModelIndex, QAbstractTableModel, QVariant
+from PyQt5.QtGui import QFont
+
+import equipment_pkg.sql_functions as sql_func
 from functions_pkg import functions as func
 
 
@@ -14,7 +15,7 @@ class MiModel(QAbstractTableModel):
     def __init__(self):
         super(MiModel, self).__init__()
         self._mi_data = []
-        self.mi_dict = dict()
+        self.mi_dict = {}
         self.update_model()
 
     def update_model(self) -> None:

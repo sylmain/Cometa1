@@ -26,3 +26,5 @@ DB_NAME = 'cometa'
 URL_START = "https://fgis.gost.ru/fundmetrology/eapi"
 MI_STATUS_LIST = ["СИ", "СИ в качестве эталона"]
 VRI_TYPE_LIST = ["периодическая", "первичная"]
+
+COLOR_OF_CHANGED_FIELDS = "#1854A8"

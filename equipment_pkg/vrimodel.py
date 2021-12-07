@@ -14,6 +14,10 @@ class VriModel(QAbstractTableModel):
     def __init__(self):
         super(VriModel, self).__init__()
         self._vri_data = []
+        self.vri_dict = {}
+        self.update_model()
+
+    def update_model(self):
         self.vri_dict = func.get_mis_vri_info()['mis_vri_dict']
 
     def set_current_mi_id(self, mi_id):
